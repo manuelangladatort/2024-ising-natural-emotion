@@ -26,8 +26,9 @@ def questionnaire():
         introduction(),
         Age(),
         Gender(),
-        GMSI(subscales=["Musical Training"]),
+        GMSI(subscales=["Musical Training", "Emotions"]),
         feedback(),
+        debrief()
     )
 
 
@@ -185,20 +186,13 @@ def debrief():
         tags.p(
             """
             Thank you for participating in this experiment. The purpose of the experiment was to collect data on how we 
-            perceive ‘pleasant’ melodies (sequences of musical tones), such as the ones you have been listening to.
+            perceive and sing melodies (sequences of musical tones), such as the ones you have been listening to. In particular, 
+            we are interested in studying the role of emotions in the perception of melodies.
             """
         )
         tags.p(
             """
-            Pleasantness is very important to understand how we perceive and create musical melodies (the main musical 
-            idea in a piece of music, or that part that you can sing or hum along to). Other important aspects melodies 
-            are pitch (the series of notes that rise and fall in pitch) and rhythm (the timing and duration of these 
-            notes).
-            """
-        )
-        tags.p(
-            """
-            The data collected during this experiment will help to better understand how people derive pleasure from 
+            The data collected during this experiment will help to better understand how people derive emotions from 
             melodies, studying for the first time all possible melodic combinations and listeners' individual 
             differences at a large scale (testing many melodies and participants from different backgrounds).
             """

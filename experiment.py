@@ -15,7 +15,7 @@ from psynet.asset import DebugStorage, LocalStorage, ExperimentAsset, Asset, Cac
 from psynet.consent import NoConsent, MainConsent, OpenScienceConsent, AudiovisualConsent
 from psynet.modular_page import AudioPrompt, AudioRecordControl, ModularPage, SurveyJSControl
 from psynet.page import InfoPage, SuccessfulEndPage,join
-from psynet.timeline import Event, ProgressDisplay, ProgressStage, Timeline, CodeBlock, conditional
+from psynet.timeline import Event, ProgressDisplay, ProgressStage, Timeline, CodeBlock, conditional, FailedValidation
 from psynet.trial.audio import (
     AudioImitationChainTrial,
     AudioImitationChainTrialMaker,
@@ -28,7 +28,7 @@ logger = get_logger()
 from sing4me import singing_extract as sing
 from sing4me import melodies
 from .params import singing_2intervals
-from .instructions import instructions, requirements_mic
+from .instructions import welcome, requirements_mic
 from .questionnaire import questionnaire
 from .pre_screens import (
     mic_test,
@@ -65,7 +65,10 @@ def get_prolific_settings():
 # Global parameters
 ########################################################################################################################
 
-DEBUG = True
+# TODO: change hotair to prolific
+# TODO: force response in ratings
+
+DEBUG = False
 RECRUITER = "hotair" # "prolific"
 RUN_BOT = False
 DESIGN = "within"  # within vs across
@@ -80,8 +83,9 @@ MAX_ISI = 1.5
 LOG_SAMPLE_ISI = False
 
 # trials
-NUM_PARTICIPANTS_EXPERIMENT = 50  # only active in within
 NUM_TRIALS_PARTICIPANT = 30 
+NUM_PARTICIPANTS_EXPERIMENT = 50  # only active in within
+NUM_CHAINS_PARTICIPANT = 3   # only active in within
 NUM_CHAINS_EXPERIMENT = 100 # only active in across
 
 TIME_ESTIMATE_TRIAL = 22  # increase if NUM_INT > 2
@@ -106,7 +110,7 @@ roving_mean = dict(
 # timbre
 TIMBRE = InstrumentTimbre("piano")
 # note_duration_tonejs = 0.8
-note_silence_tonejs = 0.2
+MIN_NOTE_SILENCE = 0.2
 ADD_TIME_AFTER_SINGING = 2
 
 # values ratings
@@ -128,18 +132,16 @@ if DEBUG:
     num_iterations_per_chain = 5
     num_chains_per_participant = 3
     num_trials_per_participant = 15
-    max_num_failed_trials_allowed = 2
     target_num_participants = 10
     num_chains = 5  # only active in across
     repeat_same_chain = True
     save_plot = True
 else:
     num_iterations_per_chain = 10
-    num_chains_per_participant = 3   # only active in within
     num_trials_per_participant = NUM_TRIALS_PARTICIPANT
-    max_num_failed_trials_allowed = 5  # TODO: implement
-    target_num_participants = NUM_PARTICIPANTS_EXPERIMENT  # only active in across
-    num_chains = NUM_CHAINS_EXPERIMENT
+    num_chains_per_participant = NUM_CHAINS_PARTICIPANT   # only active in within
+    target_num_participants = NUM_PARTICIPANTS_EXPERIMENT  # only active in within
+    num_chains = NUM_CHAINS_EXPERIMENT # only active in across
     repeat_same_chain = False
     save_plot = True
 
@@ -163,7 +165,7 @@ else:
     DESIGN_PARAMS = {
         "num_trials_per_participant": int(num_trials_per_participant),
         "num_trials_practice_test": 3,
-        "num_trials_practice_feedback": 3,
+        "num_trials_practice_feedback": 2,
         "num_iterations_per_chain": num_iterations_per_chain,
         "trials_per_node": 1,
         "balance_across_chains": False,
@@ -204,121 +206,178 @@ def get_note_durations(ISIs, note_silence):
     note_durations = []
     curr_onset = 0
     for note in ISIs:
-        curr_onset = note - note_silence_tonejs
+        curr_onset = note - note_silence
         note_durations.append(curr_onset)
     return note_durations
+
+
+def compute_stats_time(sung_note_durations, target_note_durations, sung_ISIs, target_ISIs):
+    raw_note_durations_diffs = sing.diff_across(sung_note_durations, target_note_durations)
+    raw_ISIs_diffs = sing.diff_across(sung_ISIs, target_ISIs)
+
+    note_duration_max_error, note_duration_root_mean_squared = sing.compute_error(raw_note_durations_diffs)
+    ISIs_max_error, ISIs_root_mean_squared = sing.compute_error(raw_ISIs_diffs)
+
+    return {
+        "raw_note_durations_diffs": raw_note_durations_diffs,
+        "mean_note_duration_diffs": float(np.mean(raw_note_durations_diffs) if raw_note_durations_diffs else 999),
+        "note_duration_max_error": note_duration_max_error,
+        "note_duration_root_mean_squared": float(note_duration_root_mean_squared),
+        "raw_ISIs_diffs": raw_ISIs_diffs,
+        "mean_ISIs_diff": float(np.mean(raw_ISIs_diffs) if raw_ISIs_diffs else 999),
+        "ISIs_max_error": ISIs_max_error,
+        "ISIs_root_mean_squared": float(ISIs_root_mean_squared)
+    }
 
 
 ########################################################################################################################
 # Experiment parts
 ########################################################################################################################
-# def create_listen_and_rate_trial(show_current_trial, time_estimate, stimulus, stimulus_duration):
-#     listen_and_rate_page = ModularPage(
-#         "listen_and_rate_trial",
-#         AudioPrompt(
-#             stimulus,
-#             Markup(
-#                 f"""
-#                 <h3>Listen to and rate the melody</h3>
-#                 <hr>
-#                 Please use the ratings scales below'.<br>
-#                 {show_current_trial}
-#                 <hr>
-#                 """
-#             ),
-#             controls=False,
-#         ),
-#         control=SurveyJSControl(
-#                 {
-#                     "logoPosition": "right",
-#                     "pages": [
-#                         {
-#                             "name": "rate_emotions",
-#                             "elements": [
-#                                 {
-#                                     "type": "rating",
-#                                     "name": "valence",
-#                                     "title": "Please rate whether the song evoked negative or positive feelings.",
-#                                     "rateValues": rating_response,
-#                                     "minRateDescription": "Very negative",
-#                                     "maxRateDescription": "Very positive",
-#                                 },
-#                                  {
-#                                     "type": "rating",
-#                                     "name": "arousal",
-#                                     "title": "Please rate the level of energy or excitement you felt while listening to the song.",
-#                                     "rateValues": rating_response,
-#                                     "minRateDescription": "Very calm",
-#                                     "maxRateDescription": "Very exciting",
-#                                 },
-#                             ],
-#                         },
-#                     ],
-#                 },
-#             ),
-#         events={"promptStart": Event(is_triggered_by="trialStart", delay=1)},
-#         progress_display=ProgressDisplay(
-#             stages=[ProgressStage(stimulus_duration, "Listen to and rate the melody", "green")],
-#         ),
-#         time_estimate=time_estimate,
-#     )
-#     return listen_and_rate_page
 
 
-# def create_listen_and_rate_trial_seed(show_current_trial, time_estimate, target_pitches, note_durations, stimulus_duration):
-#     listen_and_rate_page = ModularPage(
-#         "listen_and_rate_trial_seed",
-#         JSSynth(
-#             Markup(
-#                 f"""
-#                 <h3>Listen to and rate the melody</h3>
-#                 <hr>
-#                 Please use the ratings scales below'.<br>
-#                 {show_current_trial}
-#                 <hr>
-#                 """
-#             ),
-#             [Note(pitch, duration=duration) for pitch, duration in
-#              zip(target_pitches, note_durations)],
-#             timbre=TIMBRE,
-#             default_silence=note_silence_tonejs,
-#         ),
+class ListenAndRate(ModularPage):
+    def __init__(self, stimulus, show_current_trial, stimulus_duration, time_estimate):
+        super().__init__(
+            "listen_and_rate_trial",
+            AudioPrompt(
+                stimulus,
+                Markup(
+                    f"""
+                    <h3>Listen to and rate the melody</h3>
+                    <hr>
+                    Please use the ratings scales below.<br>
+                    {show_current_trial}
+                    <hr>
+                    """
+                ),
+                controls=False,
+            ),
+            control=SurveyJSControl(
+                    {
+                        "logoPosition": "right",
+                        "pages": [
+                            {
+                                "name": "rate_emotions",
+                                "elements": [
+                                    {
+                                        "type": "rating",
+                                        "name": "valence",
+                                        "title": "Please rate whether the song evoked negative or positive feelings.",
+                                        "rateValues": rating_response,
+                                        "minRateDescription": "Very negative",
+                                        "maxRateDescription": "Very positive",
+                                    },
+                                    {
+                                        "type": "rating",
+                                        "name": "arousal",
+                                        "title": "Please rate the level of energy or excitement you felt while listening to the song.",
+                                        "rateValues": rating_response,
+                                        "minRateDescription": "Very calm",
+                                        "maxRateDescription": "Very exciting",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ),
+            events={"promptStart": Event(is_triggered_by="trialStart", delay=1.5)},
+            progress_display=ProgressDisplay(
+                stages=[
+                    ProgressStage(1, "Wait a moment...", "orange"),
+                    ProgressStage(stimulus_duration, "Listen to the melody", "red"),
+                    ProgressStage(2, "Rate the melody", "green")
+                    ],
+                    ),
+            time_estimate=time_estimate,
+            bot_response=lambda: {"rating": "3",},
+        )
 
-#         control=SurveyJSControl(
-#                 {
-#                     "logoPosition": "right",
-#                     "pages": [
-#                         {
-#                             "name": "rate_emotions",
-#                             "elements": [
-#                                 {
-#                                     "type": "rating",
-#                                     "name": "valence",
-#                                     "title": "Please rate whether the song evoked negative or positive feelings.",
-#                                     "rateValues": rating_response,
-#                                     "minRateDescription": "Very negative",
-#                                     "maxRateDescription": "Very positive",
-#                                 },
-#                                  {
-#                                     "type": "rating",
-#                                     "name": "arousal",
-#                                     "title": "Please rate the level of energy or excitement you felt while listening to the song.",
-#                                     "rateValues": rating_response,
-#                                     "minRateDescription": "Very calm",
-#                                     "maxRateDescription": "Very exciting",
-#                                 },
-#                             ],
-#                         },
-#                     ],
-#                 },
-#             ),
-#         events={"promptStart": Event(is_triggered_by="trialStart", delay=1)},
-#         progress_display=ProgressDisplay(
-#             stages=[ProgressStage(stimulus_duration, "Listen to and rate the melody", "green")],
-#         ),
-#         time_estimate=time_estimate,
-#     )
-#     return listen_and_rate_page
+    # def validate(self, response, **kwargs):
+    #     n_responses = len(response.answer["rate_emotions"]) 
+
+    #     if n_responses < 2:
+    #         return FailedValidation("Please answer all the questions.")
+
+    #     return None
+        
+
+class ListenAndRateSeed(ModularPage):
+    def __init__(self, target_pitches, note_durations, show_current_trial, stimulus_duration, time_estimate):
+        super().__init__(
+            "listen_and_rate_trial_seed",
+            JSSynth(
+                Markup(
+                    f"""
+                    <h3>Listen to and rate the melody</h3>
+                    <hr>
+                    Please use the ratings scales below.<br>
+                    {show_current_trial}
+                    <hr>
+                    """
+                ),
+                [Note(pitch, duration=duration) for pitch, duration in
+                zip(target_pitches, note_durations)],
+                timbre=TIMBRE,
+                default_silence=MIN_NOTE_SILENCE,
+            ),
+            control=SurveyJSControl(
+                    {
+                        "logoPosition": "right",
+                        "pages": [
+                            {
+                                "name": "rate_emotions",
+                                "elements": [
+                                    {
+                                        "type": "rating",
+                                        "name": "valence",
+                                        "title": "Please rate whether the song evoked negative or positive feelings.",
+                                        "rateValues": rating_response,
+                                        "minRateDescription": "Very negative",
+                                        "maxRateDescription": "Very positive",
+                                    },
+                                    {
+                                        "type": "rating",
+                                        "name": "arousal",
+                                        "title": "Please rate the level of energy or excitement you felt while listening to the song.",
+                                        "rateValues": rating_response,
+                                        "minRateDescription": "Very calm",
+                                        "maxRateDescription": "Very exciting",
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ),
+            events={"promptStart": Event(is_triggered_by="trialStart", delay=1.5)},
+            progress_display=ProgressDisplay(
+                stages=[
+                    ProgressStage(1, "Wait a moment...", "orange"),
+                    ProgressStage(stimulus_duration, "Listen to the melody", "red"),
+                    ProgressStage(2, "Rate the melody", "green")
+                    ],
+                    ),
+            time_estimate=time_estimate,
+            bot_response=lambda: {"rating": "3",},
+        )
+
+    # def validate(self, response, **kwargs):
+        
+    #     n_responses = len(response.answer["rate_emotions"])
+
+    #     if n_responses < 2:
+    #         return FailedValidation("Please answer all the questions.")
+
+    #     return None
+    
+
+def create_listen_and_rate_trial(show_current_trial, time_estimate, stimulus, stimulus_duration):
+    listen_and_rate_page = ListenAndRate(stimulus, show_current_trial, stimulus_duration, time_estimate)
+    return listen_and_rate_page
+
+
+def create_listen_and_rate_trial_seed(show_current_trial, time_estimate, target_pitches, note_durations, stimulus_duration):
+    listen_and_rate_page = ListenAndRateSeed(target_pitches, note_durations, show_current_trial, stimulus_duration, time_estimate)
+    return listen_and_rate_page
 
 
 def create_singing_trial(show_current_trial, time_estimate, melody_duration, singing_duration, stimulus):
@@ -379,7 +438,7 @@ def create_singing_trial_seed(show_current_trial, target_pitches, note_durations
             [Note(pitch, duration=duration) for pitch, duration in
              zip(target_pitches, note_durations)],
             timbre=TIMBRE,
-            default_silence=note_silence_tonejs,
+            default_silence=MIN_NOTE_SILENCE,
         ),
         control=AudioRecordControl(
             duration=singing_duration,
@@ -415,6 +474,9 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
         else:
             target_pitches = self.definition["target_pitches"]
 
+        target_note_durations = self.definition["target_note_durations"]
+        target_ISIs = self.definition["target_ISIs"]
+
         raw = sing.analyze(
             audio_file,
             config,
@@ -424,10 +486,8 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             ),
         )
 
-        raw = [
-            {key: melodies.as_native_type(value) for key, value in x.items()} for x in raw
-        ]
-        silence_durations, note_durations, ISIs = sing.extract_onsets(raw, 0.25)
+        raw = [{key: melodies.as_native_type(value) for key, value in x.items()} for x in raw]
+
         sung_pitches = [x["median_f0"] for x in raw]
         sung_intervals = melodies.convert_absolute_pitches_to_interval_sequence(
             sung_pitches,
@@ -438,15 +498,41 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             "previous_note"
         )
 
-        stats = sing.compute_stats(
+        # sung_silence_durations, sung_note_durations, sung_ISIs = sing.extract_onsets(raw, MIN_NOTE_SILENCE) # TODO: check extraction, why are silences 0.25?
+        
+        # timings
+
+        # get start/ end onsets
+        start_onsets = [x["start_tt"] for x in raw]
+        end_onsets = [x["end_tt"] for x in raw]
+
+        # get ISI
+        ISI_ms = np.diff(start_onsets)
+        sung_ISIs = [(i / 1000) for i in ISI_ms]
+
+        # note durations
+        note_durations_ms = [element2 - element1 for (element2, element1) in zip(end_onsets, start_onsets)]
+        sung_note_durations = [(i / 1000) for i in note_durations_ms]
+
+        # silent durations
+        silence_durations_ms = [element2 - element1 for (element2, element1) in zip(ISI_ms, note_durations_ms)]
+        sung_silence_durations = [(i / 1000) for i in silence_durations_ms]
+
+        time_stats = compute_stats_time(
+            sung_note_durations, 
+            target_note_durations, 
+            sung_ISIs, 
+            target_ISIs)
+
+        pitch_stats = sing.compute_stats(
             sung_pitches,
             target_pitches,
             sung_intervals,
             target_intervals
         )
 
-        num_sung_pitches = stats["num_sung_pitches"]
-        num_target_pitches = stats["num_target_pitches"]
+        num_sung_pitches = pitch_stats["num_sung_pitches"]
+        num_target_pitches = pitch_stats["num_target_pitches"]
         correct_num_notes = num_sung_pitches == num_target_pitches
 
         if correct_num_notes:
@@ -460,7 +546,6 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             "failed": failed,
             "reason": reason,
             "register": self.participant.var.register,
-            # "reference_pitch": reference_pitch,
             "target_pitches": target_pitches,
             "num_target_pitches": len(target_pitches),
             "target_intervals": target_intervals,
@@ -469,20 +554,31 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             "sung_intervals": sung_intervals,
             "raw": raw,
             "save_plot": save_plot,
-            "stats": stats,
-            "silence_durations":silence_durations,
-            "note_durations":note_durations,
-            "ISIs":ISIs,
+            "pitch_stats": pitch_stats,
+            "time_stats": time_stats,
+            "target_note_durations": target_note_durations,
+            "target_ISIs": target_ISIs,
+            "sung_silence_durations":sung_silence_durations,
+            "sung_note_durations":sung_note_durations,
+            "sung_ISIs":sung_ISIs,
             "raw_audio": audio_file
         }
 
 
 class CustomTrial(CustomTrialAnalysis):
+
+    num_pages = 2
     time_estimate = TIME_ESTIMATE_TRIAL
+    accumulate_answers = True
 
     def show_trial(self, experiment, participant):
         current_trial = self.position + 1
-        total_num_trials = DESIGN_PARAMS["num_trials_per_participant"]
+
+        if self.trial_maker_id == "sing_practice":
+            total_num_trials = DESIGN_PARAMS["num_trials_practice_feedback"]
+        else:
+            total_num_trials = DESIGN_PARAMS["num_trials_per_participant"] 
+
         show_current_trial = f'<br><br>Trial number {current_trial} out of {total_num_trials} possible maximum trials.'
 
         if self.degree == 0:
@@ -499,9 +595,17 @@ class CustomTrial(CustomTrialAnalysis):
             melody_duration, singing_duration = estimate_time_per_trial(
                 target_note_durations,
                 NUM_NOTES + 1,
-                note_silence_tonejs,
+                MIN_NOTE_SILENCE,
                 ADD_TIME_AFTER_SINGING
             )
+
+            listening_page = create_listen_and_rate_trial_seed(
+                show_current_trial, 
+                TIME_ESTIMATE_LISTEN, 
+                target_pitches, 
+                target_note_durations, 
+                (melody_duration + 1)
+                )
 
             singing_page = create_singing_trial_seed(
                 show_current_trial,
@@ -519,6 +623,13 @@ class CustomTrial(CustomTrialAnalysis):
             end_time = (raw_analysis[0][NUM_NOTES-1]['end_tt'] + 100)/1000
             tot_duration = end_time-start_time
 
+            listening_page = create_listen_and_rate_trial(
+                show_current_trial, 
+                TIME_ESTIMATE_LISTEN, 
+                stimulus, 
+                (tot_duration + 1)
+                )
+
             singing_page = create_singing_trial(
                 show_current_trial,
                 TIME_ESTIMATE_SING,
@@ -527,7 +638,109 @@ class CustomTrial(CustomTrialAnalysis):
                 stimulus
             )
 
-        return singing_page
+        return [listening_page, singing_page]
+    
+
+class CustomTrialPractice(CustomTrial):
+
+    def show_trial(self, experiment, participant):
+
+        current_trial = self.position + 1
+        total_num_trials = DESIGN_PARAMS["num_trials_practice_feedback"]
+        show_current_trial = f'Trial number {current_trial} out of {total_num_trials} trials.'
+
+        if self.participant.var.register == "high":
+            target_pitches = self.definition["target_pitches"]
+        else:
+            target_pitches = [(i - 12) for i in self.definition["target_pitches"]]
+
+        target_note_durations = self.definition["target_note_durations"]
+
+        melody_duration, singing_duration = estimate_time_per_trial(
+            target_note_durations,
+            NUM_NOTES + 1,
+            MIN_NOTE_SILENCE,
+            ADD_TIME_AFTER_SINGING
+        )
+
+        listening_page = create_listen_and_rate_trial_seed(
+            show_current_trial, 
+            TIME_ESTIMATE_LISTEN, 
+            target_pitches, 
+            target_note_durations, 
+            (melody_duration + 1)
+            )
+
+        singing_page = create_singing_trial_seed(
+            show_current_trial,
+            target_pitches,
+            target_note_durations,
+            TIME_ESTIMATE_SING,
+            melody_duration,
+            singing_duration
+        )
+
+        return [listening_page, singing_page]
+
+    def gives_feedback(self, experiment, participant):
+        return True
+
+    def show_feedback(self, experiment, participant):
+        output_analysis = self.analysis
+        num_sung_pitches = len(output_analysis["sung_pitches"])
+        num_target_pitches = len(output_analysis["target_pitches"])
+
+        if num_sung_pitches == num_target_pitches:
+            return InfoPage(
+                Markup(
+                    f"""
+                    <h3>Your performance is great!</h3>
+                    <hr>
+                    We detected {num_sung_pitches} notes in your recording.
+                    <hr>
+                    """
+                ),
+                time_estimate=5
+            )
+        elif num_sung_pitches == (num_target_pitches - 1) or num_sung_pitches == (num_target_pitches + 1):
+            return InfoPage(
+                Markup(
+                    f"""
+                    <h3>You can do better...</h3>
+                    <hr>
+                    We detected {num_sung_pitches} notes in your recording, but we asked you to sing {num_target_pitches} notes.
+                    <br>
+                    Please try to do one or more of the following:
+                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
+                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                        <li>Leave a silent gap between the notes.</li>
+                        <li>Sing each note for about 1 second.</li>
+                    </ol>
+                    <b><b>If you don't improve your performance, the experiment will terminate.</b></b>
+                    <hr>
+                    """
+                ),
+                time_estimate=5
+            )
+        else:
+            return InfoPage(
+                Markup(
+                    f"""
+                   <h3>Your performance is bad...</h3>
+                    <hr>
+                    We could not detect any note in your recording.<br><br>
+                    Please try to do one or more of the following:
+                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
+                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                        <li>Leave a silent gap between the notes.</li>
+                        <li>Sing each note for about 1 second.</li>
+                    </ol>
+                    <b><b>If you don't improve your performance, the experiment will terminate.</b></b>
+                    <hr>
+                    """
+                ),
+                time_estimate=5
+            )
 
 
 class CustomNode(ImitationChainNode):
@@ -535,25 +748,26 @@ class CustomNode(ImitationChainNode):
         return seed
 
     def summarize_trials(self, trials: list, experiment, participant):
-        target_pitches = [trial.analysis["target_pitches"] for trial in trials]
         sung_intervals = [trial.analysis["sung_intervals"] for trial in trials]
-        note_durations = [trial.analysis["note_durations"] for trial in trials]
-        ISIs = [trial.analysis["ISIs"] for trial in trials]
+        sung_pitches = [trial.analysis["sung_pitches"] for trial in trials]
+        sung_note_durations = [trial.analysis["sung_note_durations"] for trial in trials]
+        sung_ISIs = [trial.analysis["sung_ISIs"] for trial in trials]
+
         raw_analysis = [trial.analysis["raw"] for trial in trials]
         raw_audio = [trial.analysis["raw_audio"] for trial in trials]
 
-        target_pitches = [mean(x) for x in zip(*target_pitches)]
         target_intervals = [mean(x) for x in zip(*sung_intervals)]
-        note_durations = [mean(x) for x in zip(*note_durations)]
-        ISIs = [mean(x) for x in zip(*ISIs)]
+        target_pitches = [mean(x) for x in zip(*sung_pitches)]
+        target_note_durations = [mean(x) for x in zip(*sung_note_durations)]
+        target_ISIs = [mean(x) for x in zip(*sung_ISIs)]
 
         return dict(
             register=self.participant.var.register,
             num_target_pitches=len(target_pitches),
             target_pitches=target_pitches,
             target_intervals=target_intervals,
-            target_note_durations=note_durations,
-            ISIs = ISIs,
+            target_note_durations=target_note_durations,
+            target_ISIs = target_ISIs,
             trial_type="node_trial",
             raw_audio=raw_audio,
             raw_analysis=raw_analysis
@@ -572,9 +786,7 @@ class CustomNode(ImitationChainNode):
             num_pitches=NUM_NOTES
         )
         target_intervals = melodies.convert_absolute_pitches_to_interval_sequence(target_pitches, "previous_note")
-        target_intervals2reference = melodies.convert_absolute_pitches_to_intervals2reference(
-            target_pitches, reference_pitch
-        )
+
         ISIs = sample_ISIs(
             min_isi=MIN_ISI,
             max_isi=MAX_ISI,
@@ -582,7 +794,7 @@ class CustomNode(ImitationChainNode):
             is_log_sampling=LOG_SAMPLE_ISI
         )
         
-        note_durations = get_note_durations(ISIs, note_silence_tonejs)
+        note_durations = get_note_durations(ISIs, MIN_NOTE_SILENCE)
 
         # note_durations = sample_note_durations(
         #     min_note_duration=MIN_ISI,
@@ -595,7 +807,7 @@ class CustomNode(ImitationChainNode):
         curr_onset = 0
         for note in note_durations:
             onsets.extend([curr_onset])
-            curr_onset += note + note_silence_tonejs
+            curr_onset += note + MIN_NOTE_SILENCE
 
         return dict(
             register="high",  # all melodies are generated in the high register
@@ -604,9 +816,8 @@ class CustomNode(ImitationChainNode):
             max_interval_size=MAX_ABS_INT_ERROR_ALLOWED,
             target_pitches=target_pitches,
             target_intervals=target_intervals,
-            ISIs=ISIs,
+            target_ISIs=ISIs,
             target_note_durations=note_durations,
-            target_intervals2reference=target_intervals2reference,
             num_target_pitches=NUM_NOTES,
             trial_type="source_trial",
             reference_mode=reference_mode,
@@ -658,6 +869,111 @@ class CustomNode(ImitationChainNode):
             asset.deposit()
 
 
+class CustomNodePractice(ImitationChainNode):
+    def create_definition_from_seed(self, seed, experiment, participant):
+        return seed
+
+    def summarize_trials(self, trials: list, experiment, participant):
+        sung_intervals = [trial.analysis["sung_intervals"] for trial in trials]
+        register = [trial.analysis["register"] for trial in trials]
+
+        sung_intervals = [mean(x) for x in zip(*sung_intervals)]
+
+        return dict(
+            register=register.pop(0),
+            sung_intervals=sung_intervals,
+            trial_type="node_trial_practice"
+        )
+
+    def create_initial_seed(self, experiment, participant):
+
+        reference_pitch = melodies.sample_reference_pitch(
+            roving_mean["high"],
+            roving_width,
+        )
+
+        target_pitches = melodies.sample_absolute_pitches(
+            reference_pitch=reference_pitch,
+            max_interval2reference=MAX_INTERVAL2REFERENCE,
+            num_pitches=NUM_NOTES
+        )
+        target_intervals = melodies.convert_absolute_pitches_to_interval_sequence(target_pitches, "previous_note")
+
+        ISIs = sample_ISIs(
+            min_isi=MIN_ISI,
+            max_isi=MAX_ISI,
+            num_pitches=NUM_NOTES,
+            is_log_sampling=LOG_SAMPLE_ISI
+        )
+        
+        note_durations = get_note_durations(ISIs, MIN_NOTE_SILENCE)
+
+        onsets = []
+        curr_onset = 0
+        for note in note_durations:
+            onsets.extend([curr_onset])
+            curr_onset += note + MIN_NOTE_SILENCE
+
+        return dict(
+            register="high",  # all melodies are generated in the high register
+            reference_pitch=reference_pitch,
+            max_interval2reference=MAX_INTERVAL2REFERENCE,
+            max_interval_size=MAX_ABS_INT_ERROR_ALLOWED,
+            target_pitches=target_pitches,
+            target_intervals=target_intervals,
+            target_ISIs=ISIs,
+            target_note_durations=note_durations,
+            num_target_pitches=NUM_NOTES,
+            trial_type="source_trial_practice",
+            reference_mode=reference_mode,
+            onsets=onsets
+        )
+
+class SingingImitationTrialMakerPractice(AudioImitationChainTrialMaker):
+    performance_check_type = "performance"
+    performance_threshold = 0.25
+    give_end_feedback_passed = False
+
+
+practice_singing = join(
+    InfoPage("We can now start the main singing task. Please pay attention to the instructions.", time_estimate=2),
+    InfoPage(Markup(f"""
+            <h3>Instructions Practice</h3>
+            <hr>
+            You will now practice singing to longer melodies consisting of {NUM_NOTES} notes.
+            <br><br>
+            In each trial, you will first listen to a melody and rate it.<br>
+            You will then listen to the melody again and sing it back as accurately as possible. 
+            <br><br>
+            <b><b>Remember</b></b>: Sing each note clearly to the syllable 'TA' 
+            and leave silent gaps between notes.
+            <hr>
+            """
+            ),
+            time_estimate = 3
+            ),
+    SingingImitationTrialMakerPractice(
+        id_="sing_practice",
+        trial_class=CustomTrialPractice,
+        node_class=CustomNodePractice,
+        chain_type="within",
+        expected_trials_per_participant=DESIGN_PARAMS["num_trials_practice_feedback"],
+        max_trials_per_participant=DESIGN_PARAMS["num_trials_practice_feedback"],
+        chains_per_participant=DESIGN_PARAMS["num_trials_practice_feedback"],  # set to None if chain_type="across"
+        max_nodes_per_chain = 1,  # only relevant in within chains
+        chains_per_experiment=None,  # set to None if chain_type="within"
+        trials_per_node=1,
+        balance_across_chains=True,
+        check_performance_at_end=True,
+        check_performance_every_trial=False,
+        recruit_mode="n_participants",
+        target_n_participants=0,
+        wait_for_networks=True,
+        propagate_failure=False
+    ),
+)
+
+
 main_singing = join(
     InfoPage("We can now start with the main singing task. Please pay attention to the instructions.", time_estimate=2),
     InfoPage(
@@ -665,12 +981,12 @@ main_singing = join(
             f"""
             <h3>Instructions</h3>
             <hr>
-            You will listen to a total of {num_trials_per_participant} musical melodies. Each melody is composed of {NUM_NOTES} notes.
+            You will listen to a total of {num_trials_per_participant} musical melodies. 
             <br><br>
-            Listen to each melody carefully and sing it back as accurately as possible. 
+            First, you will listen to the melody and rate it.<br>
+            Second, you will listen to the melody again and sing it back as accurately as possible. 
             <br><br>
-            <b><b>Important</b></b>: Sing each note clearly to the syllable 'TA' 
-            and leave silent gaps between notes.
+            <b><b>Note</b></b>: Melodies can either be played by a piano or sung by other particaipnts.
             <hr>
             """
         ),
@@ -720,8 +1036,10 @@ class Exp(psynet.experiment.Experiment):
     if DEBUG:
             timeline = Timeline(
                 NoConsent(),
-                instructions(),
+                welcome(),
                 CodeBlock(lambda participant: participant.var.set("register", "low")),  # set singing register to low
+                questionnaire(),
+                practice_singing,
                 main_singing,
                 SuccessfulEndPage()
             )
@@ -731,10 +1049,11 @@ class Exp(psynet.experiment.Experiment):
             MainConsent(),
             AudiovisualConsent(),
             OpenScienceConsent(),
+            welcome(),
             requirements_mic(),
             mic_test(),
-            recording_example(),
-            singing_performance(),  # here we 1) screen bad participants and 2) select singing register
+            # recording_example(),
+            singing_performance(),  # here we 1) screen bad participants and 2) select singing register (8 trials)
             conditional( 
                 label="assign_register",
                 condition=lambda experiment, participant: participant.var.predicted_register == "undefined",
@@ -747,12 +1066,13 @@ class Exp(psynet.experiment.Experiment):
                                             ),
                 fix_time_credit=False
             ),
+            practice_singing,
             main_singing,
             questionnaire(),
             SuccessfulEndPage(),
         )
 
-    # if RUN_BOT: # TODO: implement BOTDS
+    # if RUN_BOT: # TODO: implement BOTS
     #     @staticmethod # MAKE SURE TO COMMENT OUT IN REAL EXPERIMENTS!
     #     @scheduled_task("interval", minutes=40 / 60, max_instances=1)
     #     def run_bot_participant():

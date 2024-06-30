@@ -2,7 +2,7 @@ from markupsafe import Markup
 from psynet.page import InfoPage
 
 
-def instructions():
+def welcome():
     return InfoPage(
         Markup(
             """

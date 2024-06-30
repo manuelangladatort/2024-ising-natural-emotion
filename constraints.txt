@@ -4,7 +4,7 @@
 #
 #    dallinger generate-constraints
 #
-# Compiled from a requirement.txt file with md5sum: 4979b45aed838b4f712505be0635ec85
+# Compiled from a requirement.txt file with md5sum: c81359aa6ad51ee42168f26637fe3cc9
 #
 apscheduler==3.10.4
     # via
@@ -260,9 +260,7 @@ pluggy==1.5.0
 polib==1.2.0
     # via psynet
 praat-parselmouth==0.4.3
-    # via
-    #   psynet
-    #   sing4me
+    # via sing4me
 progress==1.6
     # via psynet
 prompt-toolkit==3.0.46
@@ -278,7 +276,7 @@ psycopg2==2.9.9
     #   -c /Users/manuelangladatort/.virtualenvs/PsyNet/lib/python3.12/site-packages/dev-requirements.txt
     #   dallinger
     #   sqlalchemy-postgres-copy
-psynet @ git+https://gitlab.com/PsyNetDev/PsyNet@v11.2.2
+psynet @ git+https://gitlab.com/PsyNetDev/PsyNet@v11.5.0
     # via -r requirements.txt
 ptyprocess==0.7.0
     # via

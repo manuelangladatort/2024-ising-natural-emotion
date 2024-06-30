@@ -218,7 +218,7 @@ duration_recording = 3.5
 save_plot_prescreen = True
 
 # tests
-num_trials_test = 10
+num_trials_test = 8
 num_trials_feedback = 2
 performance_threshold = 5  # this determines when we fail people in the main performance test
 
@@ -253,7 +253,7 @@ nodes_singing_performance_test = [
             ),
         },
     )
-    for interval in [-1.3, -2.6, 0.0, 1.3, 2.6]
+    for interval in [-1.3, -2.6, 1.3, 2.6]
     for register in ["low", "high"]
 ]
 
@@ -271,7 +271,7 @@ nodes_singing_performance_test2 = [
             ),
         },
     )
-    for interval in [-1.3, -2.6, 0.0, 1.3, 2.6]
+    for interval in [-1.3, -2.6, 1.3, 2.6]
     for register in ["low", "high"]
 ]
 
@@ -596,7 +596,7 @@ def singing_performance():
         InfoPage(
             Markup(
                 f"""
-                <h3>Singing Practice</h3>
+                <h3>Singing Feedback</h3>
                 <hr>
                 <b><b>You will hear a melody with 2 notes and your goal is to sing each note back as 
                 accurately as possible.</b></b><br>
