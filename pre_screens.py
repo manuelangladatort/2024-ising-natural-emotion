@@ -528,7 +528,7 @@ class SingingPerformanceFeedbackTrial(AudioRecordTrial, StaticTrial):
 
 class SingingPerformanceFeedbackTrialMaker(StaticTrialMaker):
     performance_check_type = "performance"
-    performance_threshold = 0.6
+    performance_threshold = 0
     give_end_feedback_passed = False
 
 

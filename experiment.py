@@ -51,10 +51,10 @@ def get_prolific_settings():
     return {
         "recruiter": RECRUITER,
         # "id": "singing-nets",
-        "prolific_estimated_completion_minutes": 14,
+        "prolific_estimated_completion_minutes": 18,
         "prolific_maximum_allowed_minutes": 40,
         "prolific_recruitment_config": qualification,
-        "base_payment": 2.1,
+        "base_payment": 2.6,
         "auto_recruit": False,
         "currency": "£",
         "wage_per_hour": 0.01
@@ -65,13 +65,10 @@ def get_prolific_settings():
 # Global parameters
 ########################################################################################################################
 
-# TODO: change hotair to prolific
-# TODO: force response in ratings
-
 DEBUG = False
-RECRUITER = "hotair" # "prolific"
+RECRUITER = "prolific" # "prolific"
 RUN_BOT = False
-DESIGN = "within"  # within vs across
+DESIGN = "across"  # within vs across
 INITIAL_RECRUITMENT_SIZE = 5
 
 SYLLABLE = 'TA'
@@ -83,14 +80,14 @@ MAX_ISI = 1.5
 LOG_SAMPLE_ISI = False
 
 # trials
-NUM_TRIALS_PARTICIPANT = 30 
+NUM_TRIALS_PARTICIPANT = 20 
 NUM_PARTICIPANTS_EXPERIMENT = 50  # only active in within
 NUM_CHAINS_PARTICIPANT = 3   # only active in within
 NUM_CHAINS_EXPERIMENT = 100 # only active in across
 
-TIME_ESTIMATE_TRIAL = 22  # increase if NUM_INT > 2
-TIME_ESTIMATE_LISTEN = 10
-TIME_ESTIMATE_SING = 12
+TIME_ESTIMATE_TRIAL = 32  
+TIME_ESTIMATE_LISTEN = 15
+TIME_ESTIMATE_SING = 17
 
 MAX_ABS_INT_ERROR_ALLOWED = 999  # set to 999 if NUM_INT > 2
 MAX_INT_SIZE = 999
@@ -133,7 +130,7 @@ if DEBUG:
     num_chains_per_participant = 3
     num_trials_per_participant = 15
     target_num_participants = 10
-    num_chains = 5  # only active in across
+    num_chains = 3  # only active in across
     repeat_same_chain = True
     save_plot = True
 else:
@@ -149,7 +146,7 @@ else:
 if DESIGN == "within":
     DESIGN_PARAMS = {
         "num_trials_per_participant": (int(num_trials_per_participant) + 10),
-        "num_trials_practice_test": 3,
+        "num_trials_practice_test": 2,
         "num_trials_practice_feedback": 2,
         "num_iterations_per_chain": num_iterations_per_chain,
         "trials_per_node": 1,
@@ -164,7 +161,7 @@ if DESIGN == "within":
 else:
     DESIGN_PARAMS = {
         "num_trials_per_participant": int(num_trials_per_participant),
-        "num_trials_practice_test": 3,
+        "num_trials_practice_test": 2,
         "num_trials_practice_feedback": 2,
         "num_iterations_per_chain": num_iterations_per_chain,
         "trials_per_node": 1,
@@ -280,7 +277,11 @@ class ListenAndRate(ModularPage):
                         ],
                     },
                 ),
-            events={"promptStart": Event(is_triggered_by="trialStart", delay=1.5)},
+            events={
+                "promptStart": Event(is_triggered_by="trialStart", delay=1.5),
+                "responseEnable": Event(is_triggered_by="promptEnd", delay=1),
+                "submitEnable": Event(is_triggered_by="promptEnd", delay=1),
+                },
             progress_display=ProgressDisplay(
                 stages=[
                     ProgressStage(1, "Wait a moment...", "orange"),
@@ -348,7 +349,11 @@ class ListenAndRateSeed(ModularPage):
                         ],
                     },
                 ),
-            events={"promptStart": Event(is_triggered_by="trialStart", delay=1.5)},
+            events={
+                "promptStart": Event(is_triggered_by="trialStart", delay=1.5),
+                "responseEnable": Event(is_triggered_by="promptEnd", delay=1),
+                "submitEnable": Event(is_triggered_by="promptEnd", delay=1),
+                },
             progress_display=ProgressDisplay(
                 stages=[
                     ProgressStage(1, "Wait a moment...", "orange"),
@@ -762,7 +767,7 @@ class CustomNode(ImitationChainNode):
         target_ISIs = [mean(x) for x in zip(*sung_ISIs)]
 
         return dict(
-            register=self.participant.var.register,
+            # register=self.participant.var.register,
             num_target_pitches=len(target_pitches),
             target_pitches=target_pitches,
             target_intervals=target_intervals,
@@ -936,7 +941,7 @@ class SingingImitationTrialMakerPractice(AudioImitationChainTrialMaker):
 
 
 practice_singing = join(
-    InfoPage("We can now start the main singing task. Please pay attention to the instructions.", time_estimate=2),
+    InfoPage("We can now start the main singing practice. Please pay attention to the instructions.", time_estimate=2),
     InfoPage(Markup(f"""
             <h3>Instructions Practice</h3>
             <hr>
@@ -983,10 +988,10 @@ main_singing = join(
             <hr>
             You will listen to a total of {num_trials_per_participant} musical melodies. 
             <br><br>
-            First, you will listen to the melody and rate it.<br>
-            Second, you will listen to the melody again and sing it back as accurately as possible. 
-            <br><br>
             <b><b>Note</b></b>: Melodies can either be played by a piano or sung by other particaipnts.
+            <br><br>
+            In each trial, you will first listen to a melody and rate it.<br>
+            You will then be asked to sing the melody back as accurately as possible. 
             <hr>
             """
         ),
@@ -1025,24 +1030,21 @@ class Exp(psynet.experiment.Experiment):
     config = {
         **get_prolific_settings(),
         "initial_recruitment_size": INITIAL_RECRUITMENT_SIZE,
-        "title": "Singing experiment (Chrome browser, ~15 mins)",
-        "description":
-            "This is a singing experiment. You will be asked to replicate melodies. Please use incognito mode.",
+        "title": "Singing experiment (Chrome browser, ~17 mins)",
+        "description": "This is a singing experiment. You will be asked to rate and sing melodies.",
         "contact_email_on_error": "computational.audition+online_running_manu@gmail.com",
         "organization_name": "Max Planck Institute for Empirical Aesthetics",
         "show_reward": False
     }
 
     if DEBUG:
-            timeline = Timeline(
-                NoConsent(),
-                welcome(),
-                CodeBlock(lambda participant: participant.var.set("register", "low")),  # set singing register to low
-                questionnaire(),
-                practice_singing,
-                main_singing,
-                SuccessfulEndPage()
-            )
+        timeline = Timeline(
+            NoConsent(),
+            CodeBlock(lambda participant: participant.var.set("register", "low")),  # set singing register to low
+            welcome(),
+            main_singing,
+            SuccessfulEndPage()
+        )
 
     else:
         timeline = Timeline(
@@ -1069,6 +1071,17 @@ class Exp(psynet.experiment.Experiment):
             practice_singing,
             main_singing,
             questionnaire(),
+            InfoPage(Markup(
+                f"""
+                <h3>Thank you for participating!</h3>
+                <hr>
+                You have successfully completed the experiment. 
+                <br><br>
+                <b><b>Completion code</b></b>: we are aware of a problem in Prolific where some participants do not get a completion code at the end of the study. 
+                If this is the case, please use the NOCODE option and we will manually send you the full payment. Thank you.
+                <hr>
+                """
+                ), time_estimate=2),
             SuccessfulEndPage(),
         )
 
