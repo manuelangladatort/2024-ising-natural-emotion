@@ -1013,8 +1013,7 @@ main_singing = join(
         check_performance_every_trial=False,
         recruit_mode=DESIGN_PARAMS["recruit_mode"],
         target_n_participants=DESIGN_PARAMS["target_num_participants"],
-        allow_revisiting_networks_in_across_chains=DESIGN_PARAMS["repeat_same_chain"],
-        assets={"5s_silence": CachedAsset(input_path="assets/5s_silence.wav")}
+        allow_revisiting_networks_in_across_chains=DESIGN_PARAMS["repeat_same_chain"]
     ),
 )
 
