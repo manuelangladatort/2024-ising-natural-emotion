@@ -49,3 +49,38 @@ data_nets %>%
   mutate_if(is.list, ~paste(unlist(.), collapse = ',')) %>% 
   write.csv("data/data-clean/natising1_full.csv", row.names = FALSE)
 
+################################################################################
+# functions
+sort_json <- function(x){
+  jsonlite::stream_in(textConnection(gsub("\\n", "", x)))
+}
+
+unpack_json_column = function(data, column_to_unpack){
+  column_unpacked = sort_json(column_to_unpack)
+  data_unpacked = as_tibble(cbind(data, column_unpacked), .name_repair = "universal")
+  return(data_unpacked)
+}
+
+# data
+data_pids <- read_csv("data/natising1/Participant.csv")
+
+data_pids = data_pids %>% 
+  filter(failed == FALSE) %>%
+  select(id, singing_performance, gender, register, age, gmsi) 
+
+# gmsi
+data_pids$gmsi[is.na(data_pids$gmsi)] <- "{}"
+data_pids_gmsi = unpack_json_column(data_pids, data_pids$gmsi) 
+
+data_pids_gmsi$GMSI_MT = data_pids_gmsi$mean_scores_per_scale$`Musical Training`
+data_pids_gmsi$GMSI_SA = data_pids_gmsi$mean_scores_per_scale$`Singing Abilities`
+
+data_full_ready = data_pids_gmsi %>% 
+  select(-gmsi, -mean_scores_per_scale, -response_scores) %>% 
+  drop_na(age)
+
+# save
+data_full_ready %>% 
+  rowwise() %>% 
+  mutate_if(is.list, ~paste(unlist(.), collapse = ',')) %>% 
+  write.csv("data/participants-info.csv", row.names = FALSE)

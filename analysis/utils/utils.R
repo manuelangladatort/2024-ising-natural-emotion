@@ -96,22 +96,26 @@ prepare_trial_data = function(data_nodes, data_trials){
   column_names_int.target = new_column_names(merge_data$sung_intervals, "target_interval")
   column_names_pitch.sung = new_column_names(merge_data$sung_pitches, "sung_pitch")
   column_names_pitch.target = new_column_names(merge_data$sung_pitches, "target_pitch")
-  column_names_note_durations = new_column_names(merge_data$sung_note_durations, "sung_note_duration")
+  column_names_note_sung = new_column_names(merge_data$sung_note_durations, "sung_note_duration")
+  column_names_note_target = new_column_names(merge_data$sung_note_durations, "target_note_duration")
+  
   
   final_data = merge_data %>% 
     separate(sung_intervals, column_names_int.sung, sep=",") %>%
     separate(target_intervals, column_names_int.target, sep=",") %>%
     separate(sung_pitches, column_names_pitch.sung, sep=",") %>%
     separate(target_pitches, column_names_pitch.target, sep=",") %>%
-    separate(sung_note_durations, column_names_note_durations, sep =",") %>%
+    separate(sung_note_durations, column_names_note_sung, sep =",") %>%
+    separate(target_note_durations, column_names_note_target, sep =",") %>%
     mutate_at(column_names_int.sung, parse_number) %>%
     mutate_at(column_names_int.target, parse_number) %>%
     mutate_at(column_names_pitch.sung, parse_number) %>%
     mutate_at(column_names_pitch.target, parse_number) %>% 
-    mutate_at(column_names_note_durations, parse_number)
+    mutate_at(column_names_note_sung, parse_number)  %>% 
+    mutate_at(column_names_note_target, parse_number)
   
   return(final_data)
-}
+} 
 
 
 prepare_data_validation = function(data, app_name){
