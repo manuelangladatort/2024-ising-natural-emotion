@@ -174,6 +174,7 @@ def recording_example():
                 show_meter=True,
                 controls=False,
                 auto_advance=False,
+                bot_response_media="audio_2notes.wav",
             ),
             time_estimate=5,
             progress_display=ProgressDisplay(
@@ -307,7 +308,7 @@ class SingingPerformanceTestTrial(AudioRecordTrial, StaticTrial):
                 show_meter=False,
                 controls=False,
                 auto_advance=False,
-                bot_response_media="example_audio.wav",
+                bot_response_media="audio_2notes.wav",
             ),
             events={
                 "promptStart": Event(is_triggered_by="trialStart"),
@@ -423,7 +424,7 @@ class SingingPerformanceFeedbackTrial(AudioRecordTrial, StaticTrial):
                 show_meter=False,
                 controls=False,
                 auto_advance=False,
-                bot_response_media="example_audio.wav",
+                bot_response_media="audio_2notes.wav",
             ),
             events={
                 "promptStart": Event(is_triggered_by="trialStart"),

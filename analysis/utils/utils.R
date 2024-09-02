@@ -64,8 +64,7 @@ prepare_trial_data = function(data_nodes, data_trials){
       target_pitches = as.list(target_pitches),
       target_intervals = as.list(target_intervals),
       target_note_durations = as.list(target_note_durations)
-    ) %>% 
-    select(-target_ISIs)
+    )
   
   data_trials$analysis[is.na(data_trials$analysis)] <- "{}"
   

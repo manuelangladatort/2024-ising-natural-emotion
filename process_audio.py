@@ -8,28 +8,37 @@ def trim_audio(start_time,end_time,output_file):
     '''
     start_time: start time seconds
     end_time: end time in seconds
+    output_file: path to output WAV file
     '''
-    output_wav = wave.open(output_file, 'r')
-    nchannels = output_wav.getnchannels()
-    sampwidth = output_wav.getsampwidth()
-    framerate = output_wav.getframerate()
-    output_wav.setpos(int(start_time * framerate))
-    data_trim = output_wav.readframes(int((end_time - start_time) * framerate))
+    # Step 1: Read the audio data
+    with wave.open(output_file, 'r') as output_wav:
+        nchannels = output_wav.getnchannels()
+        sampwidth = output_wav.getsampwidth()
+        framerate = output_wav.getframerate()
+        output_wav.setpos(int(start_time * framerate))
+        data_trim = output_wav.readframes(int((end_time - start_time) * framerate))
 
+    # Step 2: Write the trimmed data back to the same file
     with wave.open(output_file, 'w') as outfile:
         outfile.setnchannels(nchannels)
         outfile.setsampwidth(sampwidth)
         outfile.setframerate(framerate)
-        outfile.setnframes(int(len(data_trim) / sampwidth))
         outfile.writeframes(data_trim)
-        outfile.close()
 
-def fade_in_out(rate, data, length, output_file):
 
-    fadein = np.power(np.linspace(0, 1, round(1 + (length / 1000.0 * rate))), 2.0)
-    fadeout = fadein[::-1]
-    data[:len(fadein)] = data[:len(fadein)] * fadein
-    data[-len(fadeout):] = data[-len(fadeout):] * fadeout
+def fade_in_out(rate, data, length):
+    '''
+    rate: sample rate of the audio
+    data: numpy array of audio data
+    length: length of fade in/out in milliseconds
+    '''
+    fadein_len = int(length / 1000.0 * rate)
+    fadeout_len = fadein_len
+    fadein = np.power(np.linspace(0, 1, fadein_len), 2.0)
+    fadeout = np.power(np.linspace(1, 0, fadeout_len), 2.0)
+    
+    data[:fadein_len] = data[:fadein_len] * fadein
+    data[-fadeout_len:] = data[-fadeout_len:] * fadeout
 
     return data
 
@@ -44,11 +53,31 @@ def build_filter_b(Wn):
     return b, a
 
 def bandpass_filter(signal, fs, lower, upper):
+    '''
+    signal: numpy array of audio data
+    fs: sample rate of the audio
+    lower: lower bound of the frequency range
+    upper: upper bound of the frequency range
+    '''
+    Wn = [freq2nyq(lower, fs), freq2nyq(upper, fs)]
+    b, a = build_filter_b(Wn)
+    filtered_signal = filtfilt(b, a, signal)
+    return filtered_signal
 
-    Wn1 = [freq2nyq(lower, fs), freq2nyq(upper, fs)]
-    b1, a1 = build_filter_b(Wn1)
-    filtered_signal1 = filtfilt(b1, a1, signal)
-    filtered_signal2 = filtfilt(b1, a1, filtered_signal1)
-    return filtered_signal2
 
-
+def normalize_audio(data, target_peak=0.99):
+    """
+    Normalize the audio signal to a target peak level.
+    
+    data: numpy array of audio data, expected to be in floating-point format
+    target_peak: target peak amplitude (default is 0.99 to avoid clipping)
+    """
+    max_val = np.max(np.abs(data))
+    if max_val > 0:
+        scaling_factor = target_peak / max_val
+        data = data * scaling_factor
+        
+        # Ensure the data stays within the range [-1, 1]
+        data = np.clip(data, -1.0, 1.0)
+        
+    return data

@@ -1,2 +1,4 @@
-psynet@git+https://gitlab.com/PsyNetDev/PsyNet@v11.5.0#egg=psynet
+psynet@git+https://gitlab.com/PsyNetDev/PsyNet@v11.6.0#egg=psynet
 sing4me@git+https://gitlab.com/computational-audition/sing4me#egg=sing4me
+scipy==1.14.1
+dallinger==10.1.3
