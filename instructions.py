@@ -24,11 +24,13 @@ def requirements_mic():
     return InfoPage(
         Markup(
             """
-            <h3>Technical requirements</h3>
+            <h3>Requirements</h3>
             <hr>
-            <b><b>We need you to use a working microphone, either from your headphones or computer</b></b>. 
-            <br><br>
-            If you are not able to satisfy these requirements currently, please return the study.
+            <ul>
+                <li>You must use a working microphone, either from your headphones or computer.</li>
+                <li>You must be in a quiet room (with no background noises).</li>
+            </ul>
+            If you cannot meet these requirements, please return the study.
             <hr>
             """
         ),

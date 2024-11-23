@@ -71,15 +71,12 @@ prepare_trial_data = function(data_nodes, data_trials){
   data_trials_unpacked = unpack_json_column(data_trials, data_trials$analysis) %>% 
     select(-raw, -save_plot, -analysis)
   
-  # data_trials_unpacked$max_abs_pitch_error = data_trials_unpacked$pitch_stats$max_abs_pitch_error
-  # data_trials_unpacked$max_abs_interval_error = data_trials_unpacked$pitch_stats$max_abs_interval_error
-  # data_trials_unpacked$direction_accuracy = data_trials_unpacked$pitch_stats$direction_accuracy
+  # Extract pitch and time stats
   data_trials_unpacked$root_mean_squared_pitch = data_trials_unpacked$pitch_stats$root_mean_squared_pitch 
   data_trials_unpacked$root_mean_squared_interval = data_trials_unpacked$pitch_stats$root_mean_squared_interval 
-  
-  # data_trials_unpacked$note_duration_max_error = data_trials_unpacked$time_stats$note_duration_max_error
   data_trials_unpacked$note_duration_root_mean_squared = data_trials_unpacked$time_stats$note_duration_root_mean_squared
 
+  # Merge data and add target melodies in seed
   merge_data = data_trials_unpacked %>% 
     mutate(degree = degree + 1) %>% 
     # add target melodies in seed
@@ -87,7 +84,8 @@ prepare_trial_data = function(data_nodes, data_trials){
     mutate(
       sung_intervals = ifelse(degree == 0, target_intervals, sung_intervals),
       sung_pitches = ifelse(degree == 0, target_pitches, sung_pitches),
-      sung_note_durations = ifelse(degree == 0, target_note_durations, sung_note_durations)
+      sung_note_durations = ifelse(degree == 0, target_note_durations, sung_note_durations),
+      sung_ISIs = ifelse(degree == 0, target_ISIs, sung_ISIs)
       )
   
   # unfolding
@@ -97,8 +95,7 @@ prepare_trial_data = function(data_nodes, data_trials){
   column_names_pitch.target = new_column_names(merge_data$sung_pitches, "target_pitch")
   column_names_note_sung = new_column_names(merge_data$sung_note_durations, "sung_note_duration")
   column_names_note_target = new_column_names(merge_data$sung_note_durations, "target_note_duration")
-  
-  
+
   final_data = merge_data %>% 
     separate(sung_intervals, column_names_int.sung, sep=",") %>%
     separate(target_intervals, column_names_int.target, sep=",") %>%
@@ -111,8 +108,8 @@ prepare_trial_data = function(data_nodes, data_trials){
     mutate_at(column_names_pitch.sung, parse_number) %>%
     mutate_at(column_names_pitch.target, parse_number) %>% 
     mutate_at(column_names_note_sung, parse_number)  %>% 
-    mutate_at(column_names_note_target, parse_number)
-  
+    mutate_at(column_names_note_target, parse_number) 
+
   return(final_data)
 } 
 

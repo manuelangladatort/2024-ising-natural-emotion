@@ -221,7 +221,7 @@ save_plot_prescreen = True
 # tests
 num_trials_test = 8
 num_trials_feedback = 2
-performance_threshold = 5  # this determines when we fail people in the main performance test
+performance_threshold = 6  # this determines when we fail people in the main performance test
 
 roving_mean_low = 49
 roving_mean_high = 61
@@ -229,6 +229,7 @@ roving_mean_high = 61
 # timbre
 note_duration_tonejs = 0.8
 note_silence_tonejs = 0
+# TIMBRE = HarmonicTimbre()
 TIMBRE = dict(
     default=HarmonicTimbre(
         attack=0.01,  # Attack phase duration in seconds
@@ -281,9 +282,14 @@ class SingingPerformanceTestTrial(AudioRecordTrial, StaticTrial):
     time_estimate = performance_trial_time_estimate
 
     def show_trial(self, experiment, participant):
+
         # count trials
+        if self.trial_maker_id == "singing_performance_feedback":
+            total_num_trials = num_trials_feedback
+        else:
+            total_num_trials = num_trials_test
+    
         current_trial = self.position + 1
-        total_num_trials = num_trials_test
         show_current_trial = f'<br><br>Trial number {current_trial} out of {total_num_trials} trials.'
 
         return ModularPage(
@@ -291,11 +297,12 @@ class SingingPerformanceTestTrial(AudioRecordTrial, StaticTrial):
             JSSynth(
                 Markup(
                     f"""
-                    <h3>Imitate the melody</h3>
-                    This melody has two notes: <b><b>Sing each note back to the syllable 'TA'.</b></b><br>
-                    <i>leave a silent gap between the notes</i>
+                    <h3>Sing back the melody</h3>
+                    <hr>
+                    <b><b>This melody has 2 notes</b></b>: Sing each note using the syllable 'TA' and leave silent gaps between notes.
                     <br><br>
                     {show_current_trial}
+                    <hr>
                     """
                 ),
                 [Note(pitch) for pitch in self.definition["target_pitches"]],
@@ -354,7 +361,7 @@ class SingingPerformanceTestTrial(AudioRecordTrial, StaticTrial):
 
         # failing criteria
         correct_num_notes = stats["num_sung_pitches"] == stats["num_target_pitches"]
-        max_interval_error_ok = stats["max_abs_interval_error"] < 3
+        max_interval_error_ok = stats["max_abs_interval_error"] < 1.5
         direction_accuracy_ok = stats["direction_accuracy"] == 100
 
         failed_options = [
@@ -392,85 +399,42 @@ class SingingPerformanceTestTrial(AudioRecordTrial, StaticTrial):
         }
 
 
-class SingingPerformanceFeedbackTrial(AudioRecordTrial, StaticTrial):
+class SingingPerformanceFeedbackTrial(SingingPerformanceTestTrial):
     time_estimate = performance_trial_time_estimate
     wait_for_feedback = True
-
-    def show_trial(self, experiment, participant):
-        # count trials
-        current_trial = self.position + 1
-        total_num_trials = num_trials_feedback
-        show_current_trial = f'<br><br>Trial number {current_trial} out of {total_num_trials} trials.'
-
-        return ModularPage(
-            "singing_performance_feedback_trial",
-            JSSynth(
-                Markup(
-                    f"""
-                    <h3>Imitate the melody</h3>
-                    This melody has two notes: <b><b>Sing each note back to the syllable 'TA'.</b></b><br>
-                    <i>leave a silent gap between the notes</i>
-                    <br><br>
-                    {show_current_trial}
-                    """
-                ),
-                [Note(pitch) for pitch in self.definition["target_pitches"]],
-                timbre=TIMBRE,
-                default_duration=note_duration_tonejs,
-                default_silence=note_silence_tonejs,
-            ),
-            control=AudioRecordControl(
-                duration=duration_recording,
-                show_meter=False,
-                controls=False,
-                auto_advance=False,
-                bot_response_media="audio_2notes.wav",
-            ),
-            events={
-                "promptStart": Event(is_triggered_by="trialStart"),
-                "recordStart": Event(is_triggered_by="promptEnd", delay=0.25),
-            },
-            progress_display=ProgressDisplay(
-                stages=[
-                    ProgressStage(duration_melody, "Listen to the melody...", "orange"),
-                    ProgressStage(duration_recording, "Recording...SING THE MELODY!", "red"),
-                    ProgressStage(0.5, "Done!", "green", persistent=True),
-                ],
-            ),
-            time_estimate=performance_trial_time_estimate,
-        )
 
     def gives_feedback(self, experiment, participant):
         return True
 
     def show_feedback(self, experiment, participant):
         output_analysis = self.analysis
-        num_sung_pitches = output_analysis["num_sung_pitches"]
+        num_sung_pitches = len(output_analysis["sung_pitches"])
+        max_abs_interval_error = output_analysis["max_abs_interval_error"]
 
-        if num_sung_pitches == 2:
+        if num_sung_pitches == 2 and max_abs_interval_error < 1:
             return InfoPage(
                 Markup(
                     f"""
                     <h3>Your performance is great!</h3>
                     <hr>
-                    We detected {num_sung_pitches} notes in your recording.
+                    We detected {num_sung_pitches} notes in your recording and your accuracy is great.
                     <hr>
                     """
                 ),
                 time_estimate=5
             )
-        if num_sung_pitches == 0:
+        elif num_sung_pitches == 2 and max_abs_interval_error >= 1:
             return InfoPage(
                 Markup(
                     f"""
-                   <h3>Your performance is bad...</h3>
-                   <hr>
-                   We could not detect any note in your recording.<br><br> 
-                    Please following the instructions:
-                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
-                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                    <h3>Your performance is bad...</h3>
+                    <hr>
+                    We detected {num_sung_pitches} notes but the accuracy in your singing was not good.
+                    <br><br>
+                    Please try to do one or more of the following:
+                    <ol><li>Make sure you are in a quiet room.</li>
+                        <li>Sing each note as accurately as possible using the syllable 'TA'.</li>
                         <li>Leave a silent gap between the notes.</li>
-                        <li>Sing each note for about 1 second.</li>
                     </ol>
                     <b><b>If you do not improve your performance, the experiment will terminate early</b></b> 
                     <hr>
@@ -482,13 +446,12 @@ class SingingPerformanceFeedbackTrial(AudioRecordTrial, StaticTrial):
             return InfoPage(
                 Markup(
                     f"""
-                    <h3>You can do better...</h3>
+                    <h3>Your performance is bad...</h3>
                     <hr>
-                    We detected {num_sung_pitches} notes in your recording, but we asked
-                    you to <b><b>sing 2 notes</b></b>.<br><br> 
-                    Please following the instructions:
-                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
-                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                    Please try to do one or more of the following:
+                    <ol><li>Make sure you are in a quiet room.</li>
+                        <li>Make sure your microphone is working.</li>
+                        <li>Sing each note as accurately as possible using the syllable 'TA'.</li>
                         <li>Leave a silent gap between the notes.</li>
                         <li>Sing each note for about 1 second.</li>
                     </ol>
@@ -499,32 +462,32 @@ class SingingPerformanceFeedbackTrial(AudioRecordTrial, StaticTrial):
                 time_estimate=5
             )
 
-    def analyze_recording(self, audio_file: str, output_plot: str):
-        raw = sing.analyze(
-            audio_file,
-            singing_2intervals,
-            target_pitches=self.definition["target_pitches"],
-            plot_options=sing.PlotOptions(
-                save=save_plot_prescreen, path=output_plot, format="png"
-            ),
-        )
-        raw = [
-            {key: melodies.as_native_type(value) for key, value in x.items()} for x in raw
-        ]
-        sung_pitches = [x["median_f0"] for x in raw]
+    # def analyze_recording(self, audio_file: str, output_plot: str):
+    #     raw = sing.analyze(
+    #         audio_file,
+    #         singing_2intervals,
+    #         target_pitches=self.definition["target_pitches"],
+    #         plot_options=sing.PlotOptions(
+    #             save=save_plot_prescreen, path=output_plot, format="png"
+    #         ),
+    #     )
+    #     raw = [
+    #         {key: melodies.as_native_type(value) for key, value in x.items()} for x in raw
+    #     ]
+    #     sung_pitches = [x["median_f0"] for x in raw]
 
-        if len(sung_pitches) >= 1:
-            correct_num_notes = True
-            failed = False
-        else:
-            correct_num_notes = False
-            failed = True
+    #     if len(sung_pitches) >= 1:
+    #         correct_num_notes = True
+    #         failed = False
+    #     else:
+    #         correct_num_notes = False
+    #         failed = True
 
-        return {
-            "failed": failed,
-            "correct_num_notes": correct_num_notes,
-            "num_sung_pitches": len(sung_pitches),
-        }
+    #     return {
+    #         "failed": failed,
+    #         "correct_num_notes": correct_num_notes,
+    #         "num_sung_pitches": len(sung_pitches),
+    #     }
 
 
 class SingingPerformanceFeedbackTrialMaker(StaticTrialMaker):
@@ -597,11 +560,10 @@ def singing_performance():
         InfoPage(
             Markup(
                 f"""
-                <h3>Singing Feedback</h3>
+                <h3>Singing Practice</h3>
                 <hr>
-                <b><b>You will hear a melody with 2 notes and your goal is to sing each note back as 
-                accurately as possible.</b></b><br>
-                <i>Note:</i> Use the syllable 'TA' to sing each note and leave a silent gap between notes. <br><br>
+                You will hear a melody with 2 notes and your goal is to sing each note back as accurately as possible.<br><br>
+                Use the syllable 'TA' to sing each note and leave a silent gap between notes. <br><br>
                 We will provide feedback after each trial.
                 <hr>
                 When ready, click <b><b>next</b></b> to start singing.

@@ -215,7 +215,7 @@ generate_2Dkde_basic2 <- function(data, interval_range, bw){
 ################################################################################
 # 1D KDE
 ################################################################################
-make_marginals_kde = function(data, sung_intervals, n_samples, BW,  boot_over = "chains"){
+make_marginals_kde = function(data, sung_intervals, n_samples, BW,  title, boot_over = "chains"){
   
   # last 3 iterations
   data_8.10 = data %>%
@@ -262,36 +262,56 @@ make_marginals_kde = function(data, sung_intervals, n_samples, BW,  boot_over = 
     geom_line(data=data_to_plot_1.3, aes(y = avg), color=cols[7], size = 0.5) +
     geom_line(data=data_to_plot_0, aes(y = avg), color="darkred", size =0.5,linetype="dashed") +
     scale_x_continuous(breaks=seq(min(vertical.lines), max(vertical.lines), 1),
-                       limits = c(-13,13))  +
+                       limits = c(min(vertical.lines), max(vertical.lines)))  +
     geom_vline(xintercept = vertical.lines, colour = "lightgrey", linetype="dashed") +
     geom_ribbon(aes(ymin = avg - sdev, ymax = avg + sdev), alpha = .4, fill = "grey") +
     geom_line(aes(y = avg), color="black", size =  0.7) +
     # add peaks
-    xlab("vname") + ylab("density") +
+    # xlab("vname") + 
+    ylab("density") +
+    # ylim(0, 0.5) +
+    ggtitle(title) +
     theme_classic() + 
-    # labs(title = tt,
-    #      subtitle = "Last 3 iterations (black 95% CI); first 3 iterations (light red); seed (darkred)") +
-    theme(axis.text.x = element_text(size=10), 
-          axis.text.y=element_text(size=10), 
-          axis.title.x = element_blank(), 
-          axis.title.y =element_blank(), 
-          axis.ticks.x=element_blank())
+    theme(axis.text.x = element_text(size=6), 
+          axis.text.y=element_text(size=6),
+          title = element_text(size=8),
+          axis.title.x = element_blank())
   
   return(p)
 }
 
 
-make_marginals_kde_separate_4ints = function(data, sung_intervals, NBOOT, BW){
+make_marginals_kde_separate_4ints = function(data, sung_intervals, NBOOT, BW, title){
   
-  marginals_int1 = make_marginals_kde(data, sung_intervals[1], NBOOT, BW)
+  marginals_int1 = make_marginals_kde(data, sung_intervals[1], NBOOT, BW, title)
   
-  marginals_int2 = make_marginals_kde(data, sung_intervals[2], NBOOT, BW)
+  marginals_int2 = make_marginals_kde(data, sung_intervals[2], NBOOT, BW, title)
   
-  marginals_int3 = make_marginals_kde(data, sung_intervals[3], NBOOT, BW)
+  marginals_int3 = make_marginals_kde(data, sung_intervals[3], NBOOT, BW, title)
   
-  marginals_int4 = make_marginals_kde(data, sung_intervals[4], NBOOT, BW)
+  marginals_int4 = make_marginals_kde(data, sung_intervals[4], NBOOT, BW, title)
   
   p = plot_grid(marginals_int1, marginals_int2, marginals_int3, marginals_int4,
+                ncol = 1)
+  
+  return(p)
+}
+
+
+make_marginals_kde_separate_notes_to_key_intervals = function(data, sung_intervals, NBOOT, BW){
+  
+  marginals_int1 = make_marginals_kde(data, sung_intervals[1], NBOOT, BW, "Note 1 to Key interval") 
+  
+  marginals_int2 = make_marginals_kde(data, sung_intervals[2], NBOOT, BW, "Note 2 to Key interval") 
+  
+  marginals_int3 = make_marginals_kde(data, sung_intervals[3], NBOOT, BW, "Note 3 to Key interval") 
+  
+  marginals_int4 = make_marginals_kde(data, sung_intervals[4], NBOOT, BW, "Note 4 to Key interval") 
+  
+  marginals_int5 = make_marginals_kde(data, sung_intervals[5], NBOOT, BW, "Note 5 to Key interval") 
+  
+  
+  p = plot_grid(marginals_int1, marginals_int2, marginals_int3, marginals_int4, marginals_int5,
                 ncol = 1)
   
   return(p)
@@ -1191,13 +1211,13 @@ prepare_data_av.contours = function(data, sung_pitch_vars){
     select(degree, sung_pitch_vars) %>% 
     group_by(degree) %>% 
     summarise_at(vars(sung_pitch_vars), mean, na.rm=T) %>% 
-    pivot_longer(sung_pitch_vars, "pitch", values_to = "mean")
+    pivot_longer(sung_pitch_vars, names_to = "pitch", values_to = "mean")
   
   data_pitches_se = data %>%
     select(degree, sung_pitch_vars) %>% 
     group_by(degree) %>% 
     summarise_at(vars(sung_pitch_vars), se_custom) %>% 
-    pivot_longer(sung_pitch_vars, "pitch", values_to = "se") %>% 
+    pivot_longer(sung_pitch_vars, names_to = "pitch", values_to = "se") %>% 
     select(-degree, -pitch)
   
   data_pitches = bind_cols(data_pitches_mean, data_pitches_se) %>% 
@@ -1290,6 +1310,8 @@ plot_clustered_contours = function(data, k, vars_pitches){
     # scale_fill_manual(values=cols) +
     facet_wrap(~cluster, ncol = 2, scales = "free") +
     ggtitle(z) +
+    scale_x_discrete(labels = c("N1", "N2", "N3", "N4", "N5")) +
+    
     theme(axis.text.x = element_text(size=10),
           axis.text.y=element_text(size=10),
           axis.title.x = element_blank(),

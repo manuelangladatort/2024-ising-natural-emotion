@@ -54,7 +54,6 @@ def get_prolific_settings():
         "recruiter": RECRUITER,
         # "id": "singing-nets",
         "prolific_estimated_completion_minutes": 14,
-        "prolific_maximum_allowed_minutes": 40,
         "prolific_recruitment_config": qualification,
         "base_payment": 2.1,
         "auto_recruit": False,
@@ -66,15 +65,25 @@ def get_prolific_settings():
 ########################################################################################################################
 # Global parameters
 ########################################################################################################################
+# TODO: implement check_fail_logic in singing_perofrmance test (see singing networks)
+# TO IMPLEMENT limit the number of times a participant can contribute in the same generation. In practice it would make it staggered, like this:
+## Participant 1: chain 0, degree 0
+## Participant 2: chain 0, degree 1; chain 1, degree 0
+## Participant 3: chain 0, degree 2; chain 1, degree 1; chain 2, degree 0
+
 
 DEBUG = False
 RUN_BOT = False
 
+# recruitment
 RECRUITER = "prolific" # prolific vs hotair
 DESIGN = "across"  # within vs across
+
 INITIAL_RECRUITMENT_SIZE = 5
 TIME_ESTIMATE_TRIAL = 18  
 
+
+# generate melodies
 NUM_NOTES = 5
 NUM_INT = (NUM_NOTES - 1)
 SYLLABLE = 'TA'
@@ -83,17 +92,19 @@ MIN_ISI = 0.5
 MAX_ISI = 1.5
 LOG_SAMPLE_ISI = False
 
+
 # trials
 NUM_TRIALS_PARTICIPANT = 20 
+NUM_ITERATIONS_CHAIN = 11
+NUM_CHAINS_EXPERIMENT = 200 # only active in across
 NUM_PARTICIPANTS_EXPERIMENT = 50  # only active in within
 NUM_CHAINS_PARTICIPANT = 3   # only active in within
-NUM_CHAINS_EXPERIMENT = 100 # only active in across
-
 
 MAX_ABS_INT_ERROR_ALLOWED = 999  # set to 999 if NUM_INT > 2
 MAX_INT_SIZE = 999
 MAX_MELODY_PITCH_RANGE = 999  # deactivated
 MAX_INTERVAL2REFERENCE = 7.5  # set to 7.5 if NUM_INT > 2
+DURATION_RECORDING = 8
 
 # singing
 config = singing_2intervals  # params singing extraction (from sing4me)
@@ -106,7 +117,18 @@ roving_mean = dict(
     )
 
 # timbre
-TIMBRE = InstrumentTimbre("piano")
+# TIMBRE = InstrumentTimbre("piano")
+TIMBRE = dict(
+    default=HarmonicTimbre(
+        attack=0.01,  # Attack phase duration in seconds
+        decay=0.025,  # Decay phase duration in seconds
+        sustain_amp=0.7,  # Amplitude fraction to decay to relative to max amplitude --> 0.4, 0.7
+        release=0.25,  # Release phase duration in seconds
+        num_harmonics=10,  # Acd ctual number of partial harmonics to use
+        roll_off=14,  # Roll-off in units of dB/octave,
+    )
+)
+
 # note_duration_tonejs = 0.8
 MIN_NOTE_SILENCE = 0.2
 ADD_TIME_AFTER_SINGING = 2
@@ -122,7 +144,7 @@ if DEBUG:
     repeat_same_chain = True
     save_plot = True
 else:
-    num_iterations_per_chain = 10
+    num_iterations_per_chain = NUM_ITERATIONS_CHAIN
     num_trials_per_participant = NUM_TRIALS_PARTICIPANT
     num_chains_per_participant = NUM_CHAINS_PARTICIPANT   # only active in within
     target_num_participants = NUM_PARTICIPANTS_EXPERIMENT  # only active in within
@@ -134,8 +156,7 @@ else:
 if DESIGN == "within":
     DESIGN_PARAMS = {
         "num_trials_per_participant": (int(num_trials_per_participant) + 10),
-        "num_trials_practice_test": 2,
-        "num_trials_practice_feedback": 2,
+        "num_trials_practice_feedback": 3,
         "num_iterations_per_chain": num_iterations_per_chain,
         "trials_per_node": 1,
         "balance_across_chains": True,
@@ -149,8 +170,7 @@ if DESIGN == "within":
 else:
     DESIGN_PARAMS = {
         "num_trials_per_participant": int(num_trials_per_participant),
-        "num_trials_practice_test": 2,
-        "num_trials_practice_feedback": 2,
+        "num_trials_practice_feedback": 3,
         "num_iterations_per_chain": num_iterations_per_chain,
         "trials_per_node": 1,
         "balance_across_chains": False,
@@ -170,7 +190,27 @@ def estimate_time_per_trial(note_durations, num_pitches, silence_duration, extra
     return melody_duration, singing_duration
 
 
-def sample_ISI(min_isi, max_isi, is_log_sampling):
+# sample ISI for a given tempo
+def sample_ISIs_for_tempo(min_isi, max_isi, silent_gap, num_pitches):
+    isis = []
+    note_durations = []
+    for _ in range(num_pitches - 1):  
+        isi = random.uniform(min_isi, max_isi)
+        isis.append(isi)
+
+        # now you can get note duration
+        note_duration = isi - silent_gap
+        note_durations.append(note_duration)
+
+    # finally, add the note duration of the final note
+    final_note_duration = random.uniform(min_isi, max_isi) - silent_gap
+    note_durations.append(final_note_duration)
+
+    return isis, note_durations
+
+
+# sample ISI continously and randomly
+def sample_random_ISI(min_isi, max_isi, is_log_sampling):
     if is_log_sampling:
         isis = math.exp(random.uniform(math.log(min_isi), math.log(max_isi)))
     else:
@@ -178,10 +218,10 @@ def sample_ISI(min_isi, max_isi, is_log_sampling):
     return isis
 
 
-def sample_ISIs(min_isi, max_isi, num_pitches, is_log_sampling):
+def sample_random_ISIs(min_isi, max_isi, num_pitches, is_log_sampling):
     isis = []
     for i in range(num_pitches):
-        target_pitch = sample_ISI(
+        target_pitch = sample_random_ISI(
             min_isi=min_isi,
             max_isi=max_isi,
             is_log_sampling=is_log_sampling
@@ -234,7 +274,6 @@ def convert_numpy(data):
 ########################################################################################################################
 # Experiment parts
 ########################################################################################################################
-
 def create_singing_trial(show_current_trial, time_estimate, melody_duration, singing_duration, stimulus):
     singing_page = ModularPage(
         "singing",
@@ -246,22 +285,15 @@ def create_singing_trial(show_current_trial, time_estimate, melody_duration, sin
                 <hr>
                 <b><b>This melody has {NUM_NOTES} notes</b></b>: Sing each note using the syllable '{SYLLABLE}' and leave silent gaps between notes.
                 <br><br>
-                <div class="alert alert-primary">
-                    <ul>
-                        <li>Click 'Record from start' to start the recording again.</li>
-                        <li>Click 'Play melody' to listen to the target melody.</li>
-                        <li>Click 'Play recording' to listen to your recording.</li>
-                    </ul>
-                </div>
                 {show_current_trial}
                 <hr>
                 """
             ),
         ),
         control=AudioRecordControl(
-            duration=singing_duration,
+            duration=DURATION_RECORDING,
             show_meter=True,
-            controls=True,
+            controls=False,
             auto_advance=False,
             bot_response_media="audio_5notes.wav",
         ),
@@ -272,7 +304,7 @@ def create_singing_trial(show_current_trial, time_estimate, melody_duration, sin
         progress_display=ProgressDisplay(
             stages=[
                 ProgressStage(melody_duration + 0.5, "Listen to the melody...", "orange"),
-                ProgressStage(singing_duration, "Recording...SING THE MELODY!", "red"),
+                ProgressStage(DURATION_RECORDING, "Recording...SING THE MELODY!", "red"),
                 ProgressStage(0.5, "Done!", "green", persistent=True),
             ],
         ),
@@ -280,6 +312,54 @@ def create_singing_trial(show_current_trial, time_estimate, melody_duration, sin
     )
     return singing_page
 
+
+# example show_trial using buttons for participants 
+# def create_singing_trial_seed_buttonsON(show_current_trial, target_pitches, note_durations, time_estimate, melody_duration, singing_duration):
+#     singing_page = ModularPage(
+#         "singing",
+#         JSSynth(
+#             Markup(
+#                 f"""
+#                 <h3>Sing back the melody</h3>
+#                 <hr>
+#                 <b><b>This melody has {NUM_NOTES} notes</b></b>: Sing each note using the syllable '{SYLLABLE}' and leave silent gaps between notes.
+#                 <br><br>
+#                 <div class="alert alert-primary">
+#                     <ul>
+#                         <li>Click 'Record from start' to start the recording again.</li>
+#                         <li>Click 'Play recording' to listen to your recording.</li>
+#                     </ul>
+#                 </div>
+#                 {show_current_trial}
+#                 <hr>
+#                 """
+#             ),
+#             [Note(pitch, duration=duration) for pitch, duration in
+#              zip(target_pitches, note_durations)],
+#             timbre=TIMBRE,
+#             default_silence=MIN_NOTE_SILENCE,
+#         ),
+#         control=AudioRecordControl(
+#             duration=DURATION_RECORDING,
+#             show_meter=True,
+#             controls=True,
+#             auto_advance=False,
+#             bot_response_media="audio_5notes.wav",
+#         ),
+#         events={
+#             "promptStart": Event(is_triggered_by="trialStart"),
+#             "recordStart": Event(is_triggered_by="promptEnd", delay=0.25),
+#         },
+#         progress_display=ProgressDisplay(
+#             stages=[
+#                 ProgressStage((melody_duration + 0.25), "Listen to the melody...", "orange"),
+#                 ProgressStage(DURATION_RECORDING, "Recording...SING THE MELODY!", "red"),
+#                 ProgressStage(0.5, "Done!", "green", persistent=True),
+#             ],
+#         ),
+#         time_estimate=time_estimate,
+#     )
+#     return singing_page
 
 def create_singing_trial_seed(show_current_trial, target_pitches, note_durations, time_estimate, melody_duration, singing_duration):
     singing_page = ModularPage(
@@ -291,12 +371,6 @@ def create_singing_trial_seed(show_current_trial, target_pitches, note_durations
                 <hr>
                 <b><b>This melody has {NUM_NOTES} notes</b></b>: Sing each note using the syllable '{SYLLABLE}' and leave silent gaps between notes.
                 <br><br>
-                <div class="alert alert-primary">
-                    <ul>
-                        <li>Click 'Record from start' to start the recording again.</li>
-                        <li>Click 'Play recording' to listen to your recording.</li>
-                    </ul>
-                </div>
                 {show_current_trial}
                 <hr>
                 """
@@ -307,9 +381,9 @@ def create_singing_trial_seed(show_current_trial, target_pitches, note_durations
             default_silence=MIN_NOTE_SILENCE,
         ),
         control=AudioRecordControl(
-            duration=singing_duration,
+            duration=DURATION_RECORDING,
             show_meter=True,
-            controls=True,
+            controls=False,
             auto_advance=False,
             bot_response_media="audio_5notes.wav",
         ),
@@ -320,7 +394,7 @@ def create_singing_trial_seed(show_current_trial, target_pitches, note_durations
         progress_display=ProgressDisplay(
             stages=[
                 ProgressStage((melody_duration + 0.25), "Listen to the melody...", "orange"),
-                ProgressStage(singing_duration, "Recording...SING THE MELODY!", "red"),
+                ProgressStage(DURATION_RECORDING, "Recording...SING THE MELODY!", "red"),
                 ProgressStage(0.5, "Done!", "green", persistent=True),
             ],
         ),
@@ -363,11 +437,7 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             target_pitches,
             "previous_note"
         )
-
-        # sung_silence_durations, sung_note_durations, sung_ISIs = sing.extract_onsets(raw, MIN_NOTE_SILENCE) # TODO: check extraction, why are silences 0.25?
         
-        # timings
-
         # get start/ end onsets
         start_onsets = [x["start_tt"] for x in raw]
         end_onsets = [x["end_tt"] for x in raw]
@@ -379,10 +449,6 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
         # note durations
         note_durations_ms = [element2 - element1 for (element2, element1) in zip(end_onsets, start_onsets)]
         sung_note_durations = [(i / 1000) for i in note_durations_ms]
-
-        # silent durations
-        silence_durations_ms = [element2 - element1 for (element2, element1) in zip(ISI_ms, note_durations_ms)]
-        sung_silence_durations = [(i / 1000) for i in silence_durations_ms]
 
         time_stats = compute_stats_time(
             sung_note_durations, 
@@ -402,14 +468,21 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
 
         num_sung_pitches = pitch_stats["num_sung_pitches"]
         num_target_pitches = pitch_stats["num_target_pitches"]
+        direction_accuracy = pitch_stats["direction_accuracy"]
         correct_num_notes = num_sung_pitches == num_target_pitches
 
-        if correct_num_notes:
+        if direction_accuracy >= 75 and correct_num_notes:
             failed = False
             reason = "All good"
+        elif not correct_num_notes:
+            failed = True
+            reason = f"Wrong number of sung notes: {num_sung_pitches} sung out of {num_target_pitches} notes in melody"
+        elif direction_accuracy < 75:
+            failed = True
+            reason = f"Direction accuracy is too low: {direction_accuracy}%"
         else:
             failed = True
-            reason = f"Wrong number of sung notes: {num_sung_pitches}  sung out of {num_target_pitches} notes in melody"
+            reason = f"Unknown issue: num sung pitches {num_sung_pitches}, direction accuracy {direction_accuracy}%"
 
         analysis_dict = {
             "failed": failed,
@@ -427,10 +500,12 @@ class CustomTrialAnalysis(AudioImitationChainTrial):
             "time_stats": time_stats,
             "target_note_durations": target_note_durations,
             "target_ISIs": target_ISIs,
-            "sung_silence_durations":sung_silence_durations,
             "sung_note_durations":sung_note_durations,
             "sung_ISIs":sung_ISIs,
-            "raw_audio": audio_file
+            "raw_audio": audio_file,
+            "ISI_rms_error": time_stats["ISIs_root_mean_squared"],
+            "interval_rms_error":  pitch_stats["root_mean_squared_interval"],
+            "direction_accuracy": direction_accuracy,
         }
 
         analysis_dict = convert_numpy(analysis_dict)
@@ -541,32 +616,53 @@ class CustomTrialPractice(CustomTrial):
         output_analysis = self.analysis
         num_sung_pitches = len(output_analysis["sung_pitches"])
         num_target_pitches = len(output_analysis["target_pitches"])
+        direction_accuracy = output_analysis["direction_accuracy"]
+        correct_num_notes = num_sung_pitches == num_target_pitches
 
-        if num_sung_pitches == num_target_pitches:
+
+        if direction_accuracy >= 75 and correct_num_notes:
             return InfoPage(
                 Markup(
                     f"""
                     <h3>Your performance is great!</h3>
                     <hr>
-                    We detected {num_sung_pitches} notes in your recording.
+                    We detected {num_sung_pitches} notes in your recording with an accuracy of {direction_accuracy}%.
                     <hr>
                     """
                 ),
                 time_estimate=5
             )
-        elif num_sung_pitches == (num_target_pitches - 1) or num_sung_pitches == (num_target_pitches + 1):
+        elif correct_num_notes and 50 <= direction_accuracy < 75:
             return InfoPage(
                 Markup(
                     f"""
                     <h3>You can do better...</h3>
                     <hr>
-                    We detected {num_sung_pitches} notes in your recording, but we asked you to sing {num_target_pitches} notes.
-                    <br>
+                    The accuracy of your performance is {direction_accuracy}%, and should be improved.
+                    <br><br>
                     Please try to do one or more of the following:
-                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
-                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                    <ol><li>Make sure you are in a quiet room.</li>
+                        <li>Sing each note as accurately as possible using the syllable 'TA'.</li>
                         <li>Leave a silent gap between the notes.</li>
-                        <li>Sing each note for about 1 second.</li>
+                    </ol>
+                    <b><b>If you don't improve your performance, the experiment will terminate.</b></b>
+                    <hr>
+                    """
+                ),
+                time_estimate=5
+            )
+        elif correct_num_notes and direction_accuracy < 50:
+            return InfoPage(
+                Markup(
+                    f"""
+                    <h3>Your performance is bad...</h3>
+                    <hr>
+                    The accuracy of your performance is too low: {direction_accuracy}%.
+                    <br><br>
+                    Please try to do one or more of the following:
+                    <ol><li>Make sure you are in a quiet room.</li>
+                        <li>Sing each note as accurately as possible using the syllable 'TA'.</li>
+                        <li>Leave a silent gap between the notes.</li>
                     </ol>
                     <b><b>If you don't improve your performance, the experiment will terminate.</b></b>
                     <hr>
@@ -580,10 +676,12 @@ class CustomTrialPractice(CustomTrial):
                     f"""
                    <h3>Your performance is bad...</h3>
                     <hr>
-                    We could not detect any note in your recording.<br><br>
+                    We detected {num_sung_pitches} notes in your recording.
+                    <br><br>
                     Please try to do one or more of the following:
-                    <ol><li>Sing each note clearly using the syllable 'TA'.</li>
-                        <li>Make sure you computer microphone is working and you are in a quiet environment.</li>
+                    <ol><li>Make sure you are in a quiet room.</li>
+                        <li>Make sure your microphone is working.</li>
+                        <li>Sing each note as accurately as possible using the syllable 'TA'.</li>
                         <li>Leave a silent gap between the notes.</li>
                         <li>Sing each note for about 1 second.</li>
                     </ol>
@@ -639,15 +737,20 @@ class CustomNode(ImitationChainNode):
         )
         target_intervals = melodies.convert_absolute_pitches_to_interval_sequence(target_pitches, "previous_note")
 
-        ISIs = sample_ISIs(
+        # ISIs = sample_random_ISIs(
+        #     min_isi=MIN_ISI,
+        #     max_isi=MAX_ISI,
+        #     num_pitches=NUM_NOTES,
+        #     is_log_sampling=LOG_SAMPLE_ISI
+        # )
+
+        ISIs, note_durations = sample_ISIs_for_tempo(
             min_isi=MIN_ISI,
             max_isi=MAX_ISI,
-            num_pitches=NUM_NOTES,
-            is_log_sampling=LOG_SAMPLE_ISI
+            silent_gap=MIN_NOTE_SILENCE,
+            num_pitches=NUM_NOTES
         )
-        
-        note_durations = get_note_durations(ISIs, MIN_NOTE_SILENCE)
-        
+
         onsets = []
         curr_onset = 0
         for note in note_durations:
@@ -706,7 +809,8 @@ class CustomNode(ImitationChainNode):
             write(output_file, rate, data)
 
     def async_on_deploy(self):
-        logger.info("Synthesizing media for node %i ", self.id, "and degree %i", self.degree)
+        # logger.info("Synthesizing media for node %i ", self.id, "and degree %i", self.degree)
+        logger.info("Synthesizing media for node %i and degree %i", self.id, self.degree)
 
         with tempfile.NamedTemporaryFile() as temp_file:
 
@@ -750,20 +854,19 @@ class CustomNodePractice(ImitationChainNode):
         )
         target_intervals = melodies.convert_absolute_pitches_to_interval_sequence(target_pitches, "previous_note")
 
-        ISIs = sample_ISIs(
+        # ISIs = sample_random_ISIs(
+        #     min_isi=MIN_ISI,
+        #     max_isi=MAX_ISI,
+        #     num_pitches=NUM_NOTES,
+        #     is_log_sampling=LOG_SAMPLE_ISI
+        # )
+
+        ISIs, note_durations = sample_ISIs_for_tempo(
             min_isi=MIN_ISI,
             max_isi=MAX_ISI,
-            num_pitches=NUM_NOTES,
-            is_log_sampling=LOG_SAMPLE_ISI
+            silent_gap=MIN_NOTE_SILENCE,
+            num_pitches=NUM_NOTES
         )
-        
-        note_durations = get_note_durations(ISIs, MIN_NOTE_SILENCE)
-
-        onsets = []
-        curr_onset = 0
-        for note in note_durations:
-            onsets.extend([curr_onset])
-            curr_onset += note + MIN_NOTE_SILENCE
 
         return dict(
             register="high",  # all melodies are generated in the high register
@@ -776,13 +879,12 @@ class CustomNodePractice(ImitationChainNode):
             target_note_durations=note_durations,
             num_target_pitches=NUM_NOTES,
             trial_type="source_trial_practice",
-            reference_mode=reference_mode,
-            onsets=onsets
+            reference_mode=reference_mode
         )
 
 class SingingImitationTrialMakerPractice(AudioImitationChainTrialMaker):
     performance_check_type = "performance"
-    performance_threshold = 0.25
+    performance_threshold = 0.5
     give_end_feedback_passed = False
 
 
@@ -793,11 +895,21 @@ practice_singing = join(
             <hr>
             You will now practice singing to longer melodies consisting of {NUM_NOTES} notes.
             <br><br>
-            In each trial, you will first listen to a melody and rate it.<br>
-            You will then listen to the melody again and sing it back as accurately as possible. 
+            In each trial, you will listen to a melody and asked to sing it back as accurately as possible. 
             <br><br>
             <b><b>Remember</b></b>: Sing each note clearly to the syllable 'TA' 
             and leave silent gaps between notes.
+            <hr>
+            """
+            ),
+            time_estimate = 3
+            ),
+    InfoPage(Markup(f"""
+            <h3>Attention</h3>
+            <hr>
+            You will take a total of {DESIGN_PARAMS["num_trials_practice_feedback"]} practice trials and receive feedback after each trial.
+            <br><br>
+            If your performance is not good enough, the experiment will terminate earlier.
             <hr>
             """
             ),
@@ -879,6 +991,7 @@ class Exp(psynet.experiment.Experiment):
         "description": "This is a singing experiment. You will be asked to listen to and sing melodies.",
         "contact_email_on_error": "m.angladatort@gold.ac.uk",
         "organization_name": "Max Planck Institute for Empirical Aesthetics",
+        "docker_image_base_name": "docker.io/manuelangladatort/iterated-singing",
         "show_reward": False
     }
 
@@ -887,7 +1000,7 @@ class Exp(psynet.experiment.Experiment):
             NoConsent(),
             CodeBlock(lambda participant: participant.var.set("register", "low")),  # set singing register to low
             welcome(),
-            requirements_mic(),
+            # requirements_mic(),
             mic_test(),
             practice_singing,
             main_singing,
