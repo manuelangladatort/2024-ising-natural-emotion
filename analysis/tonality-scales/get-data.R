@@ -72,23 +72,9 @@ data_v1_transposed <- data_v1_round %>%
   ) %>%
   select(-transposed) 
 
-# Calculate note duration in metrical level
-data_v1_final <- data_v1_transposed %>%
-  rowwise() %>%
-  mutate(total_duration = sum(c_across(starts_with("sung_note_duration")))) %>% 
-  # Calculate metrical time for each note
-  mutate(
-    sung_note_duration_metrical1 = (sung_note_duration1 / total_duration) * 5,
-    sung_note_duration_metrical2 = (sung_note_duration2 / total_duration) * 5,
-    sung_note_duration_metrical3 = (sung_note_duration3 / total_duration) * 5,
-    sung_note_duration_metrical4 = (sung_note_duration4 / total_duration) * 5,
-    sung_note_duration_metrical5 = (sung_note_duration5 / total_duration) * 5
-  ) %>% 
-  ungroup()
-
 
 # save
-data_v1_final %>% 
+data_v1_transposed %>% 
   rowwise() %>% 
   mutate_if(is.list, ~paste(unlist(.), collapse = ',')) %>% 
   write.csv("data/data-clean/sing-scales-v2/data-sing-scales-v2_full.csv", row.names = FALSE)

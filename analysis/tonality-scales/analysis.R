@@ -161,7 +161,7 @@ midi_to_pitch_class <- function(midi_note) {
   pitch_classes[(midi_note %% 12) + 1]
 }
 
-data_v1_sequenced <- data_v1_transposed %>%
+data_v1_sequenced <- data_melodies %>%
   mutate(across(starts_with("round_sung_pitch"), midi_to_pitch_class))
 
 hist_scales_data <- data_v1_sequenced %>%
@@ -175,7 +175,7 @@ ggplot(hist_scales_data, aes(x = reorder(melody_sequence, -n), y = n)) +
   labs(x = "Melody Sequence", y = "Number of Melodies", title = "Histogram of Melody Sequences") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels for readability
 
-ggsave("histogram_scales.png", width = 16, height = 8, units = "cm")
+ggsave("results/histogram_scales.png", width = 15, height = 10, units = "cm")
 
 
 # # transition probabilities between nodes

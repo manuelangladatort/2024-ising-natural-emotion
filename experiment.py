@@ -53,7 +53,7 @@ def get_prolific_settings():
     return {
         "recruiter": RECRUITER,
         # "id": "singing-nets",
-        "prolific_estimated_completion_minutes": 14,
+        "prolific_estimated_completion_minutes": 13,
         "prolific_recruitment_config": qualification,
         "base_payment": 2.1,
         "auto_recruit": False,
@@ -65,22 +65,24 @@ def get_prolific_settings():
 ########################################################################################################################
 # Global parameters
 ########################################################################################################################
-# TODO: implement check_fail_logic in singing_perofrmance test (see singing networks)
-# TO IMPLEMENT limit the number of times a participant can contribute in the same generation. In practice it would make it staggered, like this:
-## Participant 1: chain 0, degree 0
-## Participant 2: chain 0, degree 1; chain 1, degree 0
-## Participant 3: chain 0, degree 2; chain 1, degree 1; chain 2, degree 0
-
-
 DEBUG = False
 RUN_BOT = False
 
 # recruitment
-RECRUITER = "prolific" # prolific vs hotair
+RECRUITER = "hotair" # prolific vs hotair
 DESIGN = "across"  # within vs across
 
 INITIAL_RECRUITMENT_SIZE = 5
 TIME_ESTIMATE_TRIAL = 18  
+
+INSTRUCTION = "emotion" # imitate vs emotion
+
+if INSTRUCTION == "imitate":
+    intrusction_show_trial = "Sing back the melody"
+    instruction_instructions = "In each trial, you will listen to a melody and asked to sing it back as accurately as possible."
+elif INSTRUCTION == "emotion":
+    intrusction_show_trial = "Sing back the melody while conveying emotion"
+    instruction_instructions = "In each trial, you will listen to a melody and asked to sing it back accurately <b><b>while also conveying emotion,</b></b>"
 
 
 # generate melodies
@@ -136,7 +138,7 @@ ADD_TIME_AFTER_SINGING = 2
 
 # conditional parameters
 if DEBUG:
-    num_iterations_per_chain = 5
+    num_iterations_per_chain = 10
     num_trials_per_participant = NUM_TRIALS_PARTICIPANT
     num_chains_per_participant = NUM_CHAINS_PARTICIPANT # only active in within
     target_num_participants = NUM_PARTICIPANTS_EXPERIMENT  # only active in within
@@ -367,7 +369,7 @@ def create_singing_trial_seed(show_current_trial, target_pitches, note_durations
         JSSynth(
             Markup(
                 f"""
-                <h3>Sing back the melody</h3>
+                <h3>{intrusction_show_trial}</h3>
                 <hr>
                 <b><b>This melody has {NUM_NOTES} notes</b></b>: Sing each note using the syllable '{SYLLABLE}' and leave silent gaps between notes.
                 <br><br>
@@ -895,7 +897,7 @@ practice_singing = join(
             <hr>
             You will now practice singing to longer melodies consisting of {NUM_NOTES} notes.
             <br><br>
-            In each trial, you will listen to a melody and asked to sing it back as accurately as possible. 
+            {instruction_instructions}
             <br><br>
             <b><b>Remember</b></b>: Sing each note clearly to the syllable 'TA' 
             and leave silent gaps between notes.
@@ -946,10 +948,9 @@ main_singing = join(
             <hr>
             You will listen to a total of {num_trials_per_participant} musical melodies. 
             <br><br>
-            <b><b>Note</b></b>: Melodies can either be played by a piano or sung by other particaipnts.
+            {instruction_instructions}
             <br><br>
-            In each trial, you will first listen to a melody and rate it.<br>
-            You will then be asked to sing the melody back as accurately as possible. 
+            <b><b>Note</b></b>: Melodies can either be played by a piano or sung by other particaipnts.
             <hr>
             """
         ),
@@ -987,7 +988,7 @@ class Exp(psynet.experiment.Experiment):
     config = {
         **get_prolific_settings(),
         "initial_recruitment_size": INITIAL_RECRUITMENT_SIZE,
-        "title": "Singing experiment (Chrome browser, ~14 mins)",
+        "title": "Singing experiment (Chrome browser, ~13 mins)",
         "description": "This is a singing experiment. You will be asked to listen to and sing melodies.",
         "contact_email_on_error": "m.angladatort@gold.ac.uk",
         "organization_name": "Max Planck Institute for Empirical Aesthetics",
@@ -1001,7 +1002,7 @@ class Exp(psynet.experiment.Experiment):
             CodeBlock(lambda participant: participant.var.set("register", "low")),  # set singing register to low
             welcome(),
             # requirements_mic(),
-            mic_test(),
+            # mic_test(),
             practice_singing,
             main_singing,
             questionnaire(),

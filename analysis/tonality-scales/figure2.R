@@ -1,24 +1,29 @@
-# import libraries
+################################################################################
+# Iterated singing (tonality & scales)
+# Script: figure 2
+################################################################################
+# TODO: double check key algorithm profile
+
+# import 
 library(tidyverse)
 library(egg)
 library(ggpubr)
 library(cowplot)
 
 source("utils/plots.R")
+source("utils/key-operations.R") # methods for key analysis
 
-# global parameters
+
+# global 
 loadNamespace("egg")
 theme_set(theme_pubr())
 
-MAX_INTERVAL_SIZE = 12
+MAX_INTERVAL_SIZE = 13
 interval_range = c(-MAX_INTERVAL_SIZE,MAX_INTERVAL_SIZE)
 vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
 
-# import data
-# data_melodies <- read_csv("data/data-clean/sing-scales-v1/data-sing-scales-v1_full.csv")
+# data
 data_melodies <- read_csv("data/data-clean/sing-scales-v2/data-sing-scales-v2_full.csv")
-
-source("utils/key-operations.R")
 
 
 ################################################################################
@@ -30,7 +35,7 @@ tonal_features_list <- apply_key_finding(
   minor_profile_ALbrecht2013
   # major_profile_KS,
   # minor_profile_KS
-  )
+)
 tonal_features = do.call(rbind, tonal_features_list)
 
 data_melodies$tonalness <- tonal_features$tonalness
@@ -40,46 +45,17 @@ data_melodies$mode <- tonal_features$mode
 data_melodies$estimated_key <- tonal_features$estimated_key
 
 # save data
-write_csv(data_melodies, "data/data-clean/sing-scales-v2/data-sing-scales-v2_full_tonality.csv")
-
-################################################################################
-# histogram of estimated key
-################################################################################
-hist_key <- data_melodies %>%
-  select(id:degree, estimated_key) %>% 
-  count(estimated_key) %>%  
-  arrange(desc(n))
-
-ggplot(hist_key, aes(x = reorder(estimated_key, -n), y = n)) +
-  geom_bar(stat = "identity") +
-  labs(x = "Estimated Key", y = "Number of Melodies", title = "Histogram of Estimated Keys") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
-
-ggsave("results/hist_estimated_keys_Albrecht2013.png", width = 20, height = 15, units = "cm")
-
-# over time
-hist_key <- data_melodies %>%
-  select(id:degree, estimated_key) %>% 
-  count(degree, estimated_key) %>%  
-  arrange(desc(n))
-
-hist_key_degree <- data_melodies %>%
-  select(id:degree, estimated_key) %>% 
-  count(degree, estimated_key) %>%  
-  arrange(desc(n))
-
-ggplot(hist_key_degree, aes(x = reorder(estimated_key, -n), y = n)) +
-  geom_bar(stat = "identity") +
-  labs(x = "Estimated Key", y = "Number of Melodies", title = "Histogram of Melody Sequences") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))  +
-  facet_wrap(~degree) 
-  
-ggsave("results/hist_estimated_keys_Albrecht2013_evolution.png", width = 20, height = 15, units = "cm")
+# write_csv(data_melodies, "data/data-clean/sing-scales-v2/data-sing-scales-v2_full_tonality.csv")
 
 
 ################################################################################
-# interval between notes and key
+# Key profiles
 ################################################################################
+NBOOT = 1000
+BW = 0.25
+interval_range = c(0, 15)
+vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
+
 diff_data <-  data_melodies %>%
   select(id:degree, round_sung_pitch1:round_sung_pitch5, estimated_key, mode)  %>%
   mutate(estimated_key_midi = note_to_midi_converter(estimated_key)) %>%
@@ -88,11 +64,6 @@ diff_data <-  data_melodies %>%
          diff_key_pitch3 = abs(round_sung_pitch3 - estimated_key_midi),
          diff_key_pitch4 = abs(round_sung_pitch4 - estimated_key_midi),
          diff_key_pitch5 = abs(round_sung_pitch5 - estimated_key_midi)) %>%
-  # mutate(diff_key_pitch1 = estimated_key_midi - round_sung_pitch1,
-  #        diff_key_pitch2 = estimated_key_midi - round_sung_pitch2,
-  #        diff_key_pitch3 = estimated_key_midi - round_sung_pitch3,
-  #        diff_key_pitch4 = estimated_key_midi - round_sung_pitch4,
-  #        diff_key_pitch5 = estimated_key_midi - round_sung_pitch5) %>%
   select(id:degree, estimated_key_midi, diff_key_pitch1:diff_key_pitch5)
 
 diff_data_lonf <-  diff_data %>%
@@ -101,18 +72,15 @@ diff_data_lonf <-  diff_data %>%
                values_to = "interval")
 
 
-NBOOT = 1000
-BW = 0.25
-interval_range = c(0, 15)
-vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
 
 marginals_interval_key = make_marginals_kde(diff_data_lonf, c("interval"), NBOOT, BW, "Note to Key interval") 
 
 marginals_interval_key
 
-ggsave("results/notes_to_key_intervals_all_minus_trams.png", width = 14, height = 7, units = "cm")
+ggsave("results/figure2/notes_to_key_intervals_all_minus_trams.png", width = 14, height = 7, units = "cm")
 
 
+# separate
 marginals_melodies_intervals_separate = make_marginals_kde_separate_notes_to_key_intervals(
   diff_data, 
   c("diff_key_pitch1", "diff_key_pitch2", "diff_key_pitch3", "diff_key_pitch4", "diff_key_pitch5"), 
@@ -121,8 +89,7 @@ marginals_melodies_intervals_separate = make_marginals_kde_separate_notes_to_key
 
 marginals_melodies_intervals_separate
 
-ggsave("results/notes_to_key_intervals_minus_trans.png", width = 12, height = 15, units = "cm")
-
+ggsave("results/figure2/notes_to_key_intervals_minus_trans_norm.png", width = 12, height = 15, units = "cm")
 
 
 ################################################################################
@@ -196,7 +163,7 @@ tonal.results = plot_grid(plot_tonalness, plot_tona.clarity, plot_tona.spike, nr
 
 tonal.results
 
-ggsave("results/evolution_tonal.results_Albrecht2013.png", tonal.results, width = 20, height = 8, units = "cm")
+ggsave("results/figure2/evolution_tonal.results_Albrecht2013.png", tonal.results, width = 15, height = 5, units = "cm")
 
 
 ################################################################################
@@ -259,18 +226,6 @@ plot_start_with_key = ggplot(data_summary_start, aes(x = degree, y = mean_percen
 
 plot_grid(plot_end_with_key, plot_start_with_key, nrow = 1)
 
-ggplot(data_summary_end, aes(x = degree, y = mean_percent)) +
-  geom_line() +
-  geom_point() +
-  geom_ribbon(aes(ymin = mean_percent - se_percent, ymax = mean_percent + se_percent), alpha = 0.2) +
-  labs(
-    title = "Percentage of End in Tonic Over Degree",
-    x = "Degree",
-    y = "Percentage"
-  ) +
-  theme_minimal()
-
-
 
 # difference between key and pitch
 data_summary <- data_recency %>%
@@ -323,5 +278,7 @@ ggplot(data_long, aes(x = degree, y = mean_diff, color = pitch, group = pitch)) 
     axis.title = element_text(size = 12)
   )
 
-ggsave("results/mean_diff_key_pitch_normalized.png", width = 12, height = 7, units = "cm")
+ggsave("results/figure2/mean_diff_key_pitch_normalized.png", width = 12, height = 7, units = "cm")
+
+
 

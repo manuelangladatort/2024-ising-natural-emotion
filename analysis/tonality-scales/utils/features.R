@@ -11,109 +11,69 @@ sum_boot.data_to.plot = function(data, vars_to_sum){
 }
 
 
-get_bootstrapped_features_topologies <- function(
-    data_singing, 
-    data_melcon,
+get_bootstrapped_features_melody <- function(
+    data_melodies, 
     vars_sung_intervals,
-    nboot
+    vars_sung_IOIs,
+    nboot 
 ){
-  
-  degrees = table(data_singing$degree)
-  topologies = table(data_singing$trial_maker_id)
-  topologies = names(topologies)
-  
-  data.ready = data_singing %>%
-    unite("list_sung_ints", vars_sung_intervals, sep=",", remove=FALSE) %>% 
-    select(participant_id:degree, network_id, list_sung_ints, 
-           vars_sung_intervals, rmse_interval)
-  
   store <- c()
-  store_topologies <- c()
+  degrees = table(data_melodies$degree)
+  data.ready = data_melodies %>%
+    unite("list_sung_ints", vars_sung_intervals, sep=",", remove=FALSE) %>% 
+    unite("list_sung_IOIs", vars_sung_IOIs, sep=",", remove=FALSE) 
   
-  # loop over topologies
-  for (t in 1:length(topologies)){
+  for (i in 1:nboot){
+    print(paste("features boot", i, "out of", nboot))
+    # sample with replacement
+    data_sample <- data.ready %>% group_by(network_id) %>% group_split()
+    data_sample <- sample(data_sample, length(data_sample), replace=TRUE)
+    data_sample <- bind_rows(data_sample) 
     
-    print(paste("topology:", topologies[t]))
+    data_long_intervals = data_sample %>%
+      mutate(row_id = row_number()) %>% 
+      pivot_longer(vars_sung_intervals, names_to = "index", values_to = "interval") 
     
-    data.ready_topology = data.ready %>% filter(trial_maker_id == topologies[t])
+    data_long_IOIs = data_sample %>%
+      mutate(row_id = row_number()) %>% 
+      pivot_longer(vars_sung_IOIs, names_to = "index", values_to = "interval") 
     
-    # loop over iterations
-    for (i in 1:nboot){
+    # entropy
+    boot.entropies_interval = c()
+    boot.entropies_IOI = c()
+    for (d in 1:length(degrees)){
+      degree.d = d-1
+      print(paste0("degree ", degree.d, ", in boot ", i))
       
-      print(paste("features boot", i, "out of", nboot))
-      
-      # sample with replacement
-      data_sample <- data.ready_topology %>% group_by(network_id) %>% group_split()
-      data_sample <- sample(data_sample, length(data_sample), replace=TRUE)
-      data_sample <- bind_rows(data_sample) 
-    
-      data_sample.long = data_sample %>%
-        mutate(row_id = row_number()) %>% 
-        pivot_longer(vars_sung_intervals, names_to = "index", values_to = "interval") 
-      
-      # entropy
-      boot.entropies_by_degree = c()
-      
-      for (d in 1:length(degrees)){
-        
-        degree.d = d-1
-        print(paste0("degree ", degree.d, ", in boot ", i))
-        
-        data_sample.long_degree = data_sample.long %>%  filter(degree == degree.d)
-        
-        boot.entropies_by_degree[[d]] = get_entropy_0.25(data_sample.long_degree)
-        
-      }
-      
-      entropies = do.call(rbind, boot.entropies_by_degree)
-      
-      # melodic consonance
-      data_sample.long_round = data_sample.long  %>%
-        mutate(interval = round(interval,1)) %>% 
-        select(degree, interval)
-      
-      data_sum_melcon = as_tibble(
-        merge(data_sample.long_round, data_melcon, by = "interval")) %>%
-        group_by(degree) %>%dplyr::summarise(m = mean(mean_rating))
-      
-      data_int_size = data_sample.long %>% 
-        group_by(row_id) %>% 
-        mutate(mean_abs_int_size = mean(abs(interval))) %>% 
-        group_by(degree) %>%
-        dplyr::summarise(
-          abs_int_size = mean(mean_abs_int_size, na.rm =T)
-        )
-      
-      data_int_error = data_sample %>%
-        group_by(degree) %>%
-        dplyr::summarise(
-          RMSE_interval = mean(rmse_interval, na.rm =T)
-        )
-      
-      store[[i]] = tibble(
-        topology = topologies[t],
-        boot = i,
-        degree = data_int_error$degree,
-        # RMSE
-        RMSE_interval = data_int_error$RMSE_interval,
-        # interval size
-        abs_int_size = data_int_size$abs_int_size,
-        # melodic pleasantness
-        melcon = data_sum_melcon$m,
-        # entropy
-        entropy_0.25=entropies,
-      )
-      
+      data_long_intervals_degree = data_long_intervals %>%  filter(degree == degree.d)
+      data_long_IOIs_degree = data_long_IOIs %>%  filter(degree == degree.d) 
+      boot.entropies_interval[[d]] = get_entropy_0.25(data_long_intervals_degree)
+      boot.entropies_IOI[[d]] = get_entropy_0.25(data_long_IOIs_degree)
     }
+    entropy_interval = do.call(rbind, boot.entropies_interval)
+    entropy_IOI = do.call(rbind, boot.entropies_IOI)
     
-    results_topology = do.call(rbind, store)
-
-    store_topologies[[t]] = results_topology
+    # error
+    data_error = data_sample %>%
+      group_by(degree) %>%
+      dplyr::summarise(
+        mean_interval_error = mean(root_mean_squared_interval, na.rm = T),
+        mean_ISI_error = mean(ISI_rms_error, na.rm = T),
+      )
+    
+    store[[i]] = tibble(
+      boot = i,
+      degree = data_error$degree,
+      mean_interval_error = data_error$mean_interval_error,
+      mean_ISI_error = data_error$mean_ISI_error,
+      entropy_interval=entropy_interval,
+      entropy_IOI=entropy_IOI
+    )
+    
   }
+  o = do.call(rbind, store)
   
-  results_all = do.call(rbind, store_topologies)
-  
-  return(results_all)
+  return(o)
 }
 
 

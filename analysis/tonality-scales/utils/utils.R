@@ -57,14 +57,24 @@ new_column_names = function(column, name){
 
 prepare_trial_data = function(data_nodes, data_trials){
   
+  data_nodes = data_nodes %>%  select(-target_pitches:-target_note_durations, -trial_type)
+  
+  data_nodes$definition[is.na(data_nodes$definition)] <- "{}"
+  data_nodes_unpacked = unpack_json_column(data_nodes, data_nodes$definition)
+    
+  
   # select target melodies source
-  data_nodes_source <- data_nodes %>% 
+  data_nodes_source <- data_nodes_unpacked %>% 
     filter(degree == 0)  %>% 
     mutate(
       target_pitches = as.list(target_pitches),
       target_intervals = as.list(target_intervals),
-      target_note_durations = as.list(target_note_durations)
-    )
+      target_note_durations = as.list(target_note_durations),
+      target_ISIs = as.list(target_ISIs),
+      target_onsets = as.list(onsets)
+    ) %>% 
+    select(-raw_audio)
+  
   
   data_trials$analysis[is.na(data_trials$analysis)] <- "{}"
   
@@ -93,22 +103,22 @@ prepare_trial_data = function(data_nodes, data_trials){
   column_names_int.target = new_column_names(merge_data$sung_intervals, "target_interval")
   column_names_pitch.sung = new_column_names(merge_data$sung_pitches, "sung_pitch")
   column_names_pitch.target = new_column_names(merge_data$sung_pitches, "target_pitch")
-  column_names_note_sung = new_column_names(merge_data$sung_note_durations, "sung_note_duration")
-  column_names_note_target = new_column_names(merge_data$sung_note_durations, "target_note_duration")
+  column_names_IOI_sung = new_column_names(merge_data$sung_ISIs, "sung_IOI")
+  column_names_IOI_target = new_column_names(merge_data$sung_ISIs, "target_IOI")
 
   final_data = merge_data %>% 
     separate(sung_intervals, column_names_int.sung, sep=",") %>%
     separate(target_intervals, column_names_int.target, sep=",") %>%
     separate(sung_pitches, column_names_pitch.sung, sep=",") %>%
     separate(target_pitches, column_names_pitch.target, sep=",") %>%
-    separate(sung_note_durations, column_names_note_sung, sep =",") %>%
-    separate(target_note_durations, column_names_note_target, sep =",") %>%
+    separate(sung_ISIs, column_names_IOI_sung, sep=",") %>%
+    separate(target_ISIs, column_names_IOI_target, sep=",") %>%
     mutate_at(column_names_int.sung, parse_number) %>%
     mutate_at(column_names_int.target, parse_number) %>%
     mutate_at(column_names_pitch.sung, parse_number) %>%
     mutate_at(column_names_pitch.target, parse_number) %>% 
-    mutate_at(column_names_note_sung, parse_number)  %>% 
-    mutate_at(column_names_note_target, parse_number) 
+    mutate_at(column_names_IOI_sung, parse_number)  %>% 
+    mutate_at(column_names_IOI_target, parse_number) 
 
   return(final_data)
 } 

@@ -8,6 +8,9 @@
 ################################################################################
 # 2D KDE
 ################################################################################
+list_4int_sung.intervals = c("sung_interval1","sung_interval2","sung_interval3","sung_interval4")
+list_4int_pitches = c("sung_pitch1","sung_pitch2","sung_pitch3", "sung_pitch4", "sung_pitch5")
+
 add_peaks_marginals_loop <- function(plot, dots, dots_ci, color){
   p <-   plot
   
@@ -263,6 +266,74 @@ make_marginals_kde = function(data, sung_intervals, n_samples, BW,  title, boot_
     geom_line(data=data_to_plot_0, aes(y = avg), color="darkred", size =0.5,linetype="dashed") +
     scale_x_continuous(breaks=seq(min(vertical.lines), max(vertical.lines), 1),
                        limits = c(min(vertical.lines), max(vertical.lines)))  +
+    geom_vline(xintercept = vertical.lines, colour = "lightgrey", linetype="dashed") +
+    geom_ribbon(aes(ymin = avg - sdev, ymax = avg + sdev), alpha = .4, fill = "grey") +
+    geom_line(aes(y = avg), color="black", size =  0.7) +
+    # add peaks
+    # xlab("vname") + 
+    ylab("density") +
+    # ylim(0, 0.5) +
+    ggtitle(title) +
+    theme_classic() + 
+    theme(axis.text.x = element_text(size=6), 
+          axis.text.y=element_text(size=6),
+          title = element_text(size=8),
+          axis.title.x = element_blank())
+  
+  return(p)
+}
+
+
+make_marginals_IOI_kde = function(data, sung_intervals, n_samples, BW,  title, boot_over = "chains"){
+  
+  # last 3 iterations
+  data_8.10 = data %>%
+    dplyr::filter(degree %in% 8:10)  %>%
+    dplyr::select(degree, network_id, sung_intervals) %>% 
+    pivot_longer(sung_intervals, names_to = "interval", values_to = "sung_intervals")
+  
+  # first 3 iterations
+  data_1.3 = data %>%
+    dplyr::filter(degree %in% 1:3)  %>%
+    dplyr::select(degree, network_id, sung_intervals) %>% 
+    pivot_longer(sung_intervals, names_to = "interval", values_to = "sung_intervals")
+  
+  # seed
+  data_seed = data %>%
+    dplyr::filter(degree == 0)  %>%
+    dplyr::select(degree, network_id, sung_intervals) %>%
+    pivot_longer(sung_intervals, names_to = "interval", values_to = "sung_intervals")
+  
+  data_to_plot_8.10 = kde_bootstrap_1d(data_8.10, n_samples, 
+                                       "sung_intervals", 
+                                       BW, 
+                                       boot_over, 
+                                       interval_range
+  )
+  
+  data_to_plot_1.3 = kde_bootstrap_1d(data_1.3, n_samples,
+                                      "sung_intervals",
+                                      BW,
+                                      boot_over,
+                                      interval_range
+  )
+  
+  data_to_plot_0 = kde_bootstrap_1d(data_seed, n_samples,
+                                    "sung_intervals",
+                                    (BW*3),
+                                    boot_over,
+                                    interval_range
+  )
+  
+  colfunc <- colorRampPalette(c("red", "white"))
+  cols = colfunc(10)
+  
+  
+  p = data_to_plot_8.10 %>% ggplot(aes(x)) +
+    geom_line(data=data_to_plot_1.3, aes(y = avg), color=cols[7], size = 0.5) +
+    geom_line(data=data_to_plot_0, aes(y = avg), color="darkred", size =0.5,linetype="dashed") +
+    scale_x_continuous(breaks=seq(min(interval_range), max(interval_range), 0.5),
+                       limits = c(min(interval_range), max(interval_range)))  +
     geom_vline(xintercept = vertical.lines, colour = "lightgrey", linetype="dashed") +
     geom_ribbon(aes(ymin = avg - sdev, ymax = avg + sdev), alpha = .4, fill = "grey") +
     geom_line(aes(y = avg), color="black", size =  0.7) +
