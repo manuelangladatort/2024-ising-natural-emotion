@@ -2,7 +2,6 @@
 # Iterated singing (tonality & scales)
 # Script: figure 2
 ################################################################################
-# TODO: double check key algorithm profile
 
 # import 
 library(tidyverse)
@@ -23,29 +22,26 @@ interval_range = c(-MAX_INTERVAL_SIZE,MAX_INTERVAL_SIZE)
 vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
 
 # data
-data_melodies <- read_csv("data/data-clean/sing-scales-v2/data-sing-scales-v2_full.csv")
+data_melodies <- read_csv("data/final-data/sing-scales-v2/data-sing-scales-v2_full.csv")
 
 
 ################################################################################
 # Tonality analysis
 ################################################################################
-tonal_features_list <- apply_key_finding(
-  data_melodies, 
-  major_profile_ALbrecht2013,
-  minor_profile_ALbrecht2013
-  # major_profile_KS,
-  # minor_profile_KS
-)
+tonal_features_list <- apply_key_finding(data_melodies, kk_all_key_profiles)
+# tonal_features_list <- apply_key_finding_fantastic(data_melodies, major_profile_ALbrecht2013, minor_profile_ALbrecht2013)
+
 tonal_features = do.call(rbind, tonal_features_list)
 
+data_melodies$mode <- tonal_features$mode
+data_melodies$estimated_key <- tonal_features$estimated_key
+data_melodies$estimated_tonic <- tonal_features$estimated_tonic
 data_melodies$tonalness <- tonal_features$tonalness
 data_melodies$tonal.clarity <- tonal_features$tonal.clarity
 data_melodies$tonal.spike <- tonal_features$tonal.spike
-data_melodies$mode <- tonal_features$mode
-data_melodies$estimated_key <- tonal_features$estimated_key
 
 # save data
-# write_csv(data_melodies, "data/data-clean/sing-scales-v2/data-sing-scales-v2_full_tonality.csv")
+# write_csv(data_melodies, "data/final-data/sing-scales-v2/data-sing-scales-v2_full_tonality.csv")
 
 
 ################################################################################
@@ -56,28 +52,51 @@ BW = 0.25
 interval_range = c(0, 15)
 vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
 
-diff_data <-  data_melodies %>%
-  select(id:degree, round_sung_pitch1:round_sung_pitch5, estimated_key, mode)  %>%
-  mutate(estimated_key_midi = note_to_midi_converter(estimated_key)) %>%
-  mutate(diff_key_pitch1 = abs(round_sung_pitch1 - estimated_key_midi),
-         diff_key_pitch2 = abs(round_sung_pitch2 - estimated_key_midi),
-         diff_key_pitch3 = abs(round_sung_pitch3 - estimated_key_midi),
-         diff_key_pitch4 = abs(round_sung_pitch4 - estimated_key_midi),
-         diff_key_pitch5 = abs(round_sung_pitch5 - estimated_key_midi)) %>%
-  select(id:degree, estimated_key_midi, diff_key_pitch1:diff_key_pitch5)
 
-diff_data_lonf <-  diff_data %>%
+diff_data <-  data_melodies %>%
+  select(id:degree, register, sung_pitch1:sung_pitch5, estimated_key, estimated_tonic, mode)  %>%
+  mutate(estimated_key_midi = note_to_midi_converter(estimated_key)) %>%
+  mutate(sung_pitch1 = ifelse(register == "low", (sung_pitch1+12), sung_pitch1),
+         sung_pitch2 = ifelse(register == "low", (sung_pitch2+12), sung_pitch2),
+         sung_pitch3 = ifelse(register == "low", (sung_pitch3+12), sung_pitch3),
+         sung_pitch4 = ifelse(register == "low", (sung_pitch4+12), sung_pitch4),
+         sung_pitch5 = ifelse(register == "low", (sung_pitch5+12), sung_pitch5)) %>%
+  mutate(diff_key_pitch1 = abs(sung_pitch1 - estimated_key_midi),
+         diff_key_pitch2 = abs(sung_pitch2 - estimated_key_midi),
+         diff_key_pitch3 = abs(sung_pitch3 - estimated_key_midi),
+         diff_key_pitch4 = abs(sung_pitch4 - estimated_key_midi),
+         diff_key_pitch5 = abs(sung_pitch5 - estimated_key_midi)) %>%
+  select(id:degree, estimated_key_midi, mode, diff_key_pitch1:diff_key_pitch5)
+
+
+diff_data_long <-  diff_data %>%
+  pivot_longer(cols = starts_with("diff_key_pitch"),
+               names_to = "interval_pos",
+               values_to = "interval")
+
+marginals_interval_all_key = make_marginals_kde(diff_data_long, c("interval"), NBOOT, BW, "Note to Key interval") 
+
+ggsave("results/figure2/notes_to_key_intervals_all.png", width = 14, height = 7, units = "cm")
+
+diff_data_long_major <-  diff_data %>%
+  filter(mode == "major")   %>% 
+  pivot_longer(cols = starts_with("diff_key_pitch"),
+               names_to = "interval_pos",
+               values_to = "interval")
+
+diff_data_long_minor<-  diff_data %>%
+  filter(mode == "minor")   %>% 
   pivot_longer(cols = starts_with("diff_key_pitch"),
                names_to = "interval_pos",
                values_to = "interval")
 
 
+marginals_interval_major_key = make_marginals_kde(diff_data_long_major, c("interval"), NBOOT, BW, "Major mode: Note to Key interval") 
+marginals_interval_minor_key = make_marginals_kde(diff_data_long_minor, c("interval"), NBOOT, BW, "Minor mode: Note to Key interval") 
 
-marginals_interval_key = make_marginals_kde(diff_data_lonf, c("interval"), NBOOT, BW, "Note to Key interval") 
+plot_grid(marginals_interval_major_key, marginals_interval_minor_key, nrow = 2)
 
-marginals_interval_key
-
-ggsave("results/figure2/notes_to_key_intervals_all_minus_trams.png", width = 14, height = 7, units = "cm")
+ggsave("results/figure2/notes_to_key_intervals_mode.png", width = 14, height = 12, units = "cm")
 
 
 # separate
@@ -89,7 +108,7 @@ marginals_melodies_intervals_separate = make_marginals_kde_separate_notes_to_key
 
 marginals_melodies_intervals_separate
 
-ggsave("results/figure2/notes_to_key_intervals_minus_trans_norm.png", width = 12, height = 15, units = "cm")
+ggsave("results/figure2/notes_to_key_intervals_minus_trans_continous.png", width = 12, height = 15, units = "cm")
 
 
 ################################################################################
@@ -113,6 +132,7 @@ tonality_data = data_melodies %>%
 
 # plot tonal features
 plot_tonalness = tonality_data %>%
+  filter(degree < 11) %>% 
   ggplot(aes(x= degree, y = mean_tonalness)) + 
   # plot line
   geom_line()+
@@ -131,6 +151,7 @@ plot_tonalness = tonality_data %>%
   theme(legend.position = "none")
 
 plot_tona.clarity = tonality_data %>%
+  filter(degree < 11) %>% 
   ggplot(aes(x= degree, y = mean_tonal.clarity)) + 
   geom_line()+
   geom_ribbon(aes(ymin=mean_tonal.clarity - se_sd_tonal.clarity, 
@@ -145,6 +166,7 @@ plot_tona.clarity = tonality_data %>%
   theme(legend.position = "none")
 
 plot_tona.spike = tonality_data %>%
+  filter(degree < 11) %>% 
   ggplot(aes(x= degree, y = mean_tonal.spike)) + 
   geom_line()+
   geom_ribbon(aes(ymin=mean_tonal.spike - se_tonal.spike, 
@@ -169,6 +191,11 @@ ggsave("results/figure2/evolution_tonal.results_Albrecht2013.png", tonal.results
 ################################################################################
 # test recency
 ################################################################################
+# TODO: do first and last notes tend to finish with tonic?
+# TODO: mean normalized difference between key and notes over time
+
+
+# old analysis
 data_recency = data_melodies %>% 
   select(id:degree, round_sung_pitch1:round_sung_pitch5, estimated_key, mode)  %>%
   mutate(estimated_key_midi = note_to_midi_converter(estimated_key)) %>%

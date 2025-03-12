@@ -3,7 +3,7 @@
 # Script: figure 1
 ################################################################################
 # TODO: implement distribution of IOIs
-# TODO: implement entropy og pitch and IOIs
+# TODO: implement entropy of pitch and IOIs
 
 
 # import 
@@ -25,7 +25,7 @@ interval_range = c(-MAX_INTERVAL_SIZE,MAX_INTERVAL_SIZE)
 vertical.lines = seq(from=min(interval_range), to=max(interval_range), by = 1)
 
 # data
-data_melodies <- read_csv("data/data-clean/sing-scales-v2/data-sing-scales-v2_full.csv")
+data_melodies <- read_csv("data/final-data/sing-scales-v2/data-sing-scales-v2_full.csv")
 
 length(table(data_melodies$participant_id))
 length(table(data_melodies$network_id))
@@ -66,16 +66,14 @@ ggsave("results/figure1/marginals_intervals_separate_row.png", width = 35, heigh
 ################################################################################
 # Distribution of IOIs
 ################################################################################
-# TODO: make sure analysis is correct
-
-NBOOT = 100
+NBOOT = 1000
 BW = 0.005
 interval_range = c(0, 0.5)
 vertical.lines = c(0.17, 0.25, 0.33)
 
+
 # marginals IOIs
 data_melodies_IOIs = data_melodies %>% 
-  # select(id:participant_id, sung_IOI1:sung_IOI4) %>%
   mutate(TOT = as.numeric(sung_IOI1) + as.numeric(sung_IOI2) + as.numeric(sung_IOI3) + as.numeric(sung_IOI4)) %>% 
   mutate(
     sung_IOI1 = as.numeric(sung_IOI1)/ TOT,
@@ -128,6 +126,7 @@ marginals_melodies_IOIratios = make_marginals_IOI_kde(data_melodies_ratios_long_
 marginals_melodies_IOIratios
 
 ggsave("results/figure1/marginals_IOIratios_separate_row.png", width = 14, height = 7, units = "cm")
+
 
 ################################################################################
 # Trends: Error & Entropy (bootstrapping)
@@ -213,6 +212,7 @@ plot_entropy <- ggplot(data_entropy_aggregate_long, aes(x = degree, y = Error)) 
 plot_entropy
 
 ggsave("results/figure1/entropy2.png", width = 11, height = 6, units = "cm", bg = "white")
+
 
 ################################################################################
 # Normalized

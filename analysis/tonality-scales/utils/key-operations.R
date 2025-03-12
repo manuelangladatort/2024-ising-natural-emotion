@@ -1,4 +1,4 @@
-# utils
+# methods for key estimation analysis
 
 # key profile
 # Define the Krumhansl-Schmuckler key profiles for major and minor keys
@@ -9,51 +9,180 @@ minor_profile_KS <- c(6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69
 major_profile_Temp2001 <- c(5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0)
 minor_profile_Temp2001 <- c(5.0, 2.0, 3.5, 4.5, 2.0, 4.0, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0)
 
-# use Albrecht and Shanahan (2013)
-major_profile_ALbrecht2013 <- c(0.238, 
-                               0.006, 
-                               0.111, 
-                               0.006, 
-                               0.137, 
-                               0.094, 
-                               0.016, 
-                               0.214, 
-                               0.009, 
-                               0.080, 
-                               0.008, 
-                               0.081) 
+# use Albrecht and Shanahan (2013) # arrange horizontally
+major_profile_ALbrecht2013 <- c(0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.080, 0.008, 0.081)
+minor_profile_ALbrecht2013 <- c(0.220, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052)
 
-minor_profile_ALbrecht2013 <- c(0.220, 
-                                 0.006, 
-                                 0.104, 
-                                 0.123, 
-                                 0.019, 
-                                 0.103, 
-                                 0.012, 
-                                 0.214, 
-                                 0.062, 
-                                 0.022, 
-                                 0.061, 
-                                 0.052)
 
-chromatic_scale <- c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B") # chromatic scale
+chromatic_scale <- c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+
+note_to_midi <- c("C" = 60, "C#" = 61, "D" = 62, "D#" = 63, "E" = 64, "F" = 65, 
+                  "F#" = 66, "G" = 67, "G#" = 68, "A" = 69, "A#" = 70, "B" = 71)
+
+
+# methods
 
 # covert from midi to pitch class
 midi_to_pitch_class <- function(midi_note) {
-  pitch_classes <- c("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+  pitch_classes <- chromatic_scale
   pitch_classes[(midi_note %% 12) + 1]
 }
 
 
 # covert from pitch class to midi
-note_to_midi <- c("C" = 60, "C#" = 61, "D" = 62, "D#" = 63, "E" = 64, "F" = 65, 
-                  "F#" = 66, "G" = 67, "G#" = 68, "A" = 69, "A#" = 70, "B" = 71)
-
 note_to_midi_converter <- function(note) {
   note_upper <- toupper(note) # Convert to uppercase
   midi_value <- note_to_midi[note_upper] # Map to MIDI value
   return(midi_value)
 }
+
+
+# Transpose melodies to start with middle C (MIDI 60)
+transpose_to_c4 <- function(row) {
+  transposition_interval <- 60 - row[1]  # Calculate the interval to transpose the first note to C4
+  row + transposition_interval           # Apply the interval to the entire row
+}
+
+
+################################################################################
+# from FANTASTIC
+################################################################################
+# We write out the Krumhansl-Kessler probe tone profiles.
+# There are two such profiles:
+# one for the major mode and one for the minor mode.
+kk_profiles <- list(
+  Major = major_profile_ALbrecht2013,
+  Minor = minor_profile_ALbrecht2013
+)
+
+get_kk_profile <- function(mode, tonic) {
+  ref_profile <- kk_profiles[[mode]]
+  absolute_pitch_classes <- 0:11
+  relative_pitch_classes <- (absolute_pitch_classes - tonic) %% 12
+  ref_profile[1 + relative_pitch_classes]
+}
+
+kk_all_key_profiles <- map_dfr(0:11, function(tonic) {
+  c("Major", "Minor") %>% 
+    set_names(., .) %>% 
+    map_dfr(function(mode) {
+      tibble(
+        tonic = tonic,
+        mode = mode,
+        profile = list(get_kk_profile(mode, tonic))
+      )
+    })
+})
+
+kk_all_key_profiles
+
+
+kk_estimate_key <- function(
+    kk_all_key_profiles,
+    pitches,  
+    durations 
+) {
+  pc_distribution <- 
+    tibble(pitch = pitches, duration = durations) %>%
+    mutate(
+      pitch_class = factor(pitch %% 12, levels = 0:11)
+    ) %>%
+    group_by(pitch_class, .drop = FALSE) %>%
+    summarise(
+      duration = sum(duration)
+    ) %>%
+    mutate(
+      pitch_class = as.numeric(as.character(pitch_class)),
+      rel_duration = duration / sum(duration)
+    )
+  
+  correlations <- 
+    kk_all_key_profiles %>% 
+    mutate(
+      correlation = map_dbl(
+        # This function iterates over 
+        profile,  # <-- the template profiles
+        cor,      # <-- computing the Pearson correlation
+        pc_distribution$rel_duration # <-- with the observed durations
+      ))
+  
+  chosen <- correlations %>% slice(which.max(correlations$correlation))
+
+  A0 <- sort(correlations$correlation, decreasing=TRUE)[1]
+  A1 <- sort(correlations$correlation, decreasing=TRUE)[2]
+  tonal.clarity <- A0 / A1
+  tonal.spike <- A0 / sum(correlations$correlation[correlations$correlation > 0])
+  
+  chosen %>%
+    select(tonic, mode, correlation) %>%
+    mutate(tonal.clarity=tonal.clarity, tonal.spike=tonal.spike) %>%
+    as.list()
+}
+
+
+# test
+pitches = c(63, 62, 65, 67, 69, 67)
+durations = c(1, 0.5, 0.5, 1, 0.5, 0.5)
+
+
+kk_estimate_key(
+  kk_all_key_profiles,
+  pitches =   pitches, 
+  durations = durations
+)
+
+
+# apply_key_finding(
+#   data_melodies, 
+#   kk_all_key_profiles
+# )
+
+
+# apply key finding algorithm
+apply_key_finding <- function(data, kk_all_key_profiles) {
+  
+  results <- list()
+  
+  # iterate over melodies
+  for (i in 1:nrow(data)) {
+    
+    print(paste("melody", i, "out of", nrow(data), "melodies"))
+    
+    # Extract pitches
+    pitches <- as.numeric(c(data$sung_pitch1[i], data$sung_pitch2[i], data$sung_pitch3[i], data$sung_pitch4[i], data$sung_pitch5[i]))
+    pitches <- round(pitches) 
+    
+    # Extract note durations
+    durations <- strsplit(data$sung_note_durations[1], ",")[[1]]
+    durations <- as.numeric(durations)
+    
+    # key estimation
+    res_key <- kk_estimate_key(
+      kk_all_key_profiles,
+      pitches =   pitches, 
+      durations = durations
+    )
+    
+    estimated_key = chromatic_scale[1+res_key$tonic]
+    
+    
+    # store the results in the list
+    results[[i]] <- tibble(
+      melody = i,
+      mode = res_key$mode,
+      estimated_key = estimated_key,
+      estimated_tonic = res_key$tonic,
+      tonalness = res_key$correlation,
+      tonal.clarity = res_key$tonal.clarity,
+      tonal.spike = res_key$tonal.spike
+    )
+  }
+  
+  # Return the list of results
+  return(results)
+}
+
+
 
 
 ################################################################################
@@ -128,7 +257,7 @@ compute.tonal.features_updated <- function(tonality.vector) {
 
 
 # apply key finding algorithm
-apply_key_finding <- function(data, max_profile, min_profile) {
+apply_key_finding_fantastic <- function(data, max_profile, min_profile) {
   
   # Initialize a list to store the results
   results <- list()
@@ -136,9 +265,19 @@ apply_key_finding <- function(data, max_profile, min_profile) {
   # Iterate over each row in the dataset
   for (i in 1:nrow(data)) {
     
-    # Extract the pitches and durations for the current row
-    pitches <- as.numeric(c(data$round_sung_pitch1[i], data$round_sung_pitch2[i], data$round_sung_pitch3[i], data$round_sung_pitch4[i], data$round_sung_pitch5[i]))
-    durations <- as.numeric(c(data$sung_note_duration_metrical1[i], data$sung_note_duration_metrical2[i], data$sung_note_duration_metrical3[i], data$sung_note_duration_metrical4[i], data$sung_note_duration_metrical5[i]))
+    print(paste("row", i, "out of", nrow(data), "rows"))
+    
+    # # Extract the pitches and durations for the current row
+    # pitches <- as.numeric(c(data$round_sung_pitch1[i], data$round_sung_pitch2[i], data$round_sung_pitch3[i], data$round_sung_pitch4[i], data$round_sung_pitch5[i]))
+    # durations <- as.numeric(c(data$sung_note_duration_metrical1[i], data$sung_note_duration_metrical2[i], data$sung_note_duration_metrical3[i], data$sung_note_duration_metrical4[i], data$sung_note_duration_metrical5[i]))
+    
+    # Extract pitches
+    pitches <- as.numeric(c(data$sung_pitch1[i], data$sung_pitch2[i], data$sung_pitch3[i], data$sung_pitch4[i], data$sung_pitch5[i]))
+    pitches <- round(pitches) 
+    
+    # Extract note durations
+    durations <- strsplit(data$sung_note_durations[1], ",")[[1]]
+    durations <- as.numeric(durations)
     
     # Apply the compute.tonality.vector function
     tonality.vector <- compute.tonality.vector(pitches, durations, make.tonal.weights(max_profile, min_profile))

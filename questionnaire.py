@@ -3,7 +3,7 @@ from dominate import tags
 
 from psynet.demography.general import Age, Gender
 from psynet.demography.gmsi import GMSI
-from psynet.modular_page import ModularPage, TextControl, SurveyJSControl
+from psynet.modular_page import ModularPage, TextControl, SurveyJSControl, PushButtonControl
 from psynet.page import InfoPage
 from psynet.timeline import join, FailedValidation
 
@@ -15,7 +15,7 @@ def introduction():
             "Congratulations, you completed the main experiment!"
         )
         tags.p(
-            "Before we finish, we would like to ask you a few questions about you. ",
+            "Before we finish, we would like to ask you a few questions about you and the study. ",
             "They should only take a couple of minutes to complete.",
         )
     return InfoPage(html, time_estimate=10)
@@ -29,6 +29,18 @@ def questionnaire():
         GMSI(subscales=["Musical Training", "Emotions"]),
         feedback(),
         debrief()
+    )
+
+def questionnaire_emotion():
+    return join(
+        introduction(),
+        add_emotion_in_singing(),
+        feedback_emotion(),
+        Age(),
+        Gender(),
+        GMSI(subscales=["Musical Training", "Emotions"]),
+        feedback(),
+        debrief_emotion()
     )
 
 
@@ -168,6 +180,31 @@ class TIPI(ModularPage):
         return None
 
 
+def add_emotion_in_singing():
+    return ModularPage(
+        "add_emotion_sing",
+        "Did you try to sing the melodies with emotion?",
+        PushButtonControl(
+            choices=["yes", "no"],
+            labels=["Yes", "No"],
+            arrange_vertically=False,
+        ),
+        time_estimate=3,
+        bot_response="I am just a bot, I don't have any feedback for you.",
+        save_answer="feedback_emotion",
+    )
+
+
+def feedback_emotion():
+    return ModularPage(
+        "feedback",
+        "What was your strategy to add emotion to the melodies?",
+        TextControl(one_line=False),
+        bot_response="I am just a bot, I don't have any feedback for you.",
+        save_answer="feedback_emotion",
+        time_estimate=5,
+    )
+
 def feedback():
     return ModularPage(
         "feedback",
@@ -198,4 +235,34 @@ def debrief():
             """
         )
 
-    return InfoPage(html, time_estimate=10)
+    return InfoPage(html, time_estimate=5)
+
+
+def debrief_emotion():
+    html = tags.div()
+
+    with html:
+        tags.p(
+            """
+            Thank you for taking part in this experiment and your contribution to science!
+            The aim of this experiment is to identify the role of emotions in the oral transmission music. Similar to the Telephone Game, 
+            the melodies you heard were sung and passed from one participant to another by singing. This procedure will allow us to identify 
+            how the emotionality of melodies develops through transmission and what impact different instructions have on the resulting melodies. 
+            """
+        )
+        tags.p(
+            """
+            The data collected during this experiment will help to better understand how people derive emotions from 
+            melodies, and how this shape music perception and evolution. Your data is stored anonymously, and you cannot withdraw it anymore.
+            If you were unexpectedly affected by taking part in the study, please feel free to send feedback to us.
+            """
+        )
+        tags.p(
+            """
+            If you wish to find out more about this experiment, please get in touch. You can contact me, Dr Manuel Anglada-Tort, at m.anglada-tort@gold.ac.uk. 
+            If you have any ethical concerns, you can contact the Chair of the Psychology Ethics Committee at Goldsmiths, University of London, 
+            Dr Maria Herrojo Ruiz, m.herrojo-ruiz@gold.ac.uk. 
+            """
+        )
+
+    return InfoPage(html, time_estimate=5)

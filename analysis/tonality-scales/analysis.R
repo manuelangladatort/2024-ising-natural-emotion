@@ -23,8 +23,7 @@ interval_range_pitch = c(45,75)
 vertical.lines_pitch = seq(from=min(interval_range_pitch), to=max(interval_range_pitch), by = 1)
 
 # import data
-# data_melodies <- read_csv("data/data-clean/sing-scales-v1/data-sing-scales-v2_full.csv")
-data_melodies <- read_csv("data/data-clean/sing-scales-v2/data-sing-scales-v2_full.csv")
+data_melodies <- read_csv("data/final-data/sing-scales-v2/data-sing-scales-v2_full.csv")
 
 table(data_melodies$degree)
 length(table(data_melodies$network_id))

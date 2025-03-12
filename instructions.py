@@ -6,13 +6,10 @@ def welcome():
     return InfoPage(
         Markup(
             """
-            <h3>Welcome</h3>
+            <h3>Welcome page</h3>
             <hr>
-            In this experiment, you will hear melodies and be asked to sing them back as accurately as possible.
-            <br><br>
-            We will monitor your responses throughout the experiment.
-            <br><br>
-            Press <b><b>next</b></b> when you are ready to start.
+            Thank you for your interest and support for our research on singing and emotions.<br><br>
+            We are exploring how singing and emotions interact. In this study, you will hear melodies imitate them while conveying an emotion of your choice.
             <hr>
             """
         ),
