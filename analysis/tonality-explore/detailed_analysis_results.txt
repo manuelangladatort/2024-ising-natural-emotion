@@ -1,0 +1,68 @@
+=== Detailed Key Analysis Results ===
+
+Confidence Analysis:
+count    2395.000000
+mean        0.564725
+std         0.149912
+min         0.187439
+25%         0.476171
+50%         0.573625
+75%         0.665022
+max         0.953428
+Name: m21_confidence, dtype: float64
+
+Major vs Minor Distribution:
+is_major
+True     1339
+False    1056
+Name: count, dtype: int64
+
+Tonic Note Distribution:
+m21_key
+F     263
+G     219
+E     217
+F#    216
+E-    209
+D     203
+C     199
+B-    193
+B     186
+C#    178
+A     152
+A-     92
+G#     68
+Name: count, dtype: int64
+
+Confidence by Key:
+m21_key_full
+B minor     0.608011
+G minor     0.599411
+G# minor    0.587560
+A major     0.580456
+C major     0.579528
+E- minor    0.578307
+C# major    0.574520
+F# major    0.571986
+G major     0.571739
+F minor     0.567801
+E- major    0.567250
+D minor     0.565468
+A- major    0.562067
+D major     0.557446
+F# minor    0.557439
+B major     0.555820
+E major     0.554945
+E minor     0.553939
+C# minor    0.553915
+F major     0.547355
+B- major    0.544741
+B- minor    0.543660
+A minor     0.538406
+C minor     0.536844
+Name: m21_confidence, dtype: float64
+
+Statistical Tests:
+T-test between major and minor key confidence:
+t-statistic: -0.395
+p-value: 0.693
